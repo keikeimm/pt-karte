@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { installDom, fireInput, clickByText, flush } from './setup/dom-env.js';
+import { installDom, fireInput, clickByText, flush, navForce, appRoot } from './setup/dom-env.js';
 
 installDom();
 document.body.innerHTML = '<header><span id="netBadge"></span></header><main id="app"></main>';
@@ -56,7 +56,6 @@ describe('セキュリティ（静的検証）: 自前コードに危険なAPI�
       assert.doesNotMatch(src, /XMLHttpRequest/, `${file}: XMLHttpRequest が見つかった`);
       assert.doesNotMatch(src, /sendBeacon/, `${file}: sendBeacon が見つかった`);
       assert.doesNotMatch(src, /new\s+WebSocket/, `${file}: WebSocket が見つかった`);
-      if (file !== 'js/app.js') continue; // app.js以外にfetchがあってはならない
       assert.doesNotMatch(src, /\bfetch\s*\(/, `${file}: fetch(...) が見つかった（appは外部通信しない設計）`);
     }
   });
@@ -70,8 +69,8 @@ describe('セキュリティ（静的検証）: 自前コードに危険なAPI�
   });
 
   test('el() ヘルパーに html: プロパティの受け口が無い（過去に存在したXSS経路を撤去済み）', () => {
-    const app = files.find((f) => f.file === 'js/app.js').src;
-    assert.doesNotMatch(app, /k === 'html'/);
+    const ui = files.find((f) => f.file === 'js/ui.js').src;
+    assert.doesNotMatch(ui, /k === 'html'/);
   });
 
   test('index.html / manifest / css は外部オリジンを一切参照しない（同一オリジンのみ）', () => {
@@ -88,14 +87,8 @@ describe('セキュリティ（静的検証）: 自前コードに危険なAPI�
 });
 
 describe('セキュリティ（動的検証）: 悪意ある入力を入れてもDOMに注入されない', () => {
-  function nav(hash) {
-    location.hash = '#/__force__';
-    location.hash = hash;
-    return flush();
-  }
-  function appEl() {
-    return document.getElementById('app');
-  }
+  const nav = navForce;
+  const appEl = appRoot;
 
   const XSS = '<img src=x onerror="window.__xss_fired = true">';
   const XSS_SCRIPT = '<script>window.__xss_fired = true</script>';

@@ -152,3 +152,35 @@ export function flush(rounds = 20) {
     step();
   });
 }
+
+export function appRoot() {
+  return document.getElementById('app');
+}
+
+// カルテエディタで未保存の変更があると、hashchangeのたびに app.js のナビゲーション
+// ガードが「保存せずに移動しますか？」の確認ダイアログを出す。テストのセットアップ用
+// ナビゲーションは常に強制的に画面を切り替えたいので、出てきたら自動で「OK」を押す。
+// ガード自体の挙動（キャンセルして留まる等）をテストしたい場合はこれを使わず、
+// location.hash を直接操作して確認ダイアログを手動で扱うこと。
+export async function navForce(hash) {
+  location.hash = '#/__force__';
+  await dismissLeaveConfirm();
+  location.hash = hash;
+  await dismissLeaveConfirm();
+}
+
+async function dismissLeaveConfirm() {
+  await flush();
+  for (let i = 0; i < 4; i++) {
+    const ok = byText(document.body, '.modal-foot button', 'OK');
+    if (!ok) return;
+    fireClick(ok);
+    await flush();
+  }
+}
+
+// カルテエディタの「保存」ボタンを押して保存完了まで待つ。
+export function saveNow() {
+  clickByText(appRoot(), 'button', '保存');
+  return flush();
+}

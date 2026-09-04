@@ -3,7 +3,10 @@
 import 'fake-indexeddb/auto';
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installDom, fireClick, fireInput, fireChange, firePointer, stubRect, byText, clickByText, flush } from './setup/dom-env.js';
+import {
+  installDom, fireClick, fireInput, fireChange, firePointer, stubRect, byText, clickByText,
+  flush, navForce, saveNow, appRoot,
+} from './setup/dom-env.js';
 
 installDom();
 document.body.innerHTML = '<header><span id="netBadge"></span></header><main id="app"></main>';
@@ -12,14 +15,8 @@ const { db } = await import('../js/data/adapter.js');
 const { newClient, saveClient, createChart, saveChart, getChart, todayISO } = await import('../js/store.js');
 await import('../js/app.js');
 
-function nav(hash) {
-  location.hash = '#/__force__';
-  location.hash = hash;
-  return flush();
-}
-function appEl() {
-  return document.getElementById('app');
-}
+const nav = navForce;
+const appEl = appRoot;
 function cleanupOverlays() {
   document.querySelectorAll('.overlay, .toast').forEach((n) => n.remove());
 }
@@ -28,9 +25,6 @@ function pageTitle() {
 }
 function gotoPageByName(name) {
   return clickByText(appEl(), '.pchip-name', name);
-}
-async function waitSaved() {
-  await new Promise((r) => setTimeout(r, 550)); // debounce(450ms) 経過を待つ
 }
 
 let client;
@@ -97,7 +91,7 @@ describe('カルテエディタ: 共通', () => {
     const dateInput = appEl().querySelector('.date-edit input[type=date]');
     assert.equal(dateInput.value, '2026-04-01');
     fireChange(dateInput, '2026-04-15');
-    await waitSaved();
+    await saveNow();
 
     assert.equal((await getChart(ch.id)).date, '2026-04-15');
   });
@@ -139,7 +133,7 @@ describe('カルテエディタ: フォームフィールド', () => {
     fireInput(numbers[1], '65.5'); // 体重
     fireInput(numbers[2], '18.2'); // 体脂肪率
     fireInput(grid.querySelector('textarea'), '絶好調');
-    await waitSaved();
+    await saveNow();
 
     const saved = await getChart(ch.id);
     const p = saved.pages.find((x) => x.name === '本日の記録');
@@ -168,7 +162,7 @@ describe('カルテエディタ: フォームフィールド', () => {
     await flush();
     assert.equal(appEl().querySelectorAll('.grid-table tr.data').length, rowsBefore);
 
-    await waitSaved();
+    await saveNow();
     const saved = await getChart(ch.id);
     const p = saved.pages.find((x) => x.name === 'メニュー・測定記録');
     assert.ok(p.values.items.some((r) => r.name === 'スクワット'));
@@ -184,7 +178,7 @@ describe('カルテエディタ: フォームフィールド', () => {
     assert.ok(yn, 'yesno field should render');
     const yesRadio = yn.querySelectorAll('input[type=radio]')[0];
     yesRadio.click(); // checkbox/radioの活性化(check+change発火)は本物の.click()が必要
-    await waitSaved();
+    await saveNow();
 
     const saved = await getChart(ch.id);
     const p = saved.pages.find((x) => x.name === '医学スクリーニング（PAR-Q+）');
@@ -199,7 +193,7 @@ describe('カルテエディタ: フォームフィールド', () => {
 
     const cb = appEl().querySelector('.field-inline input[type=checkbox]');
     cb.click();
-    await waitSaved();
+    await saveNow();
 
     const saved = await getChart(ch.id);
     assert.equal(saved.pages[0].values.readPrecautions, true);
@@ -218,7 +212,7 @@ describe('カルテエディタ: フォームフィールド', () => {
     firePointer(signCanvas, 'pointerdown', { x: 10, y: 10, pointerId: 9 });
     firePointer(signCanvas, 'pointermove', { x: 80, y: 20, pointerId: 9 });
     firePointer(signCanvas, 'pointerup', { x: 80, y: 20, pointerId: 9 });
-    await waitSaved();
+    await saveNow();
 
     let saved = await getChart(ch.id);
     let p = saved.pages.find((x) => x.name === '免責・キャンセルポリシー');
@@ -226,7 +220,7 @@ describe('カルテエディタ: フォームフィールド', () => {
 
     clickByText(appEl(), 'button', '署名クリア');
     clickByText(document.body, '.modal-foot button', 'OK');
-    await waitSaved();
+    await saveNow();
     saved = await getChart(ch.id);
     p = saved.pages.find((x) => x.name === '免責・キャンセルポリシー');
     assert.equal(p.values.signature.length, 0);
@@ -247,7 +241,7 @@ describe('カルテエディタ: 白紙（手書き・自由記述）ページ',
     firePointer(canvas, 'pointerdown', { x: 10, y: 10, pointerId: 5 });
     firePointer(canvas, 'pointermove', { x: 60, y: 40, pointerId: 5 });
     firePointer(canvas, 'pointerup', { x: 60, y: 40, pointerId: 5 });
-    await waitSaved();
+    await saveNow();
     let saved = await getChart(ch.id);
     let p = saved.pages.find((x) => x.name === '白紙（手書き・自由記述）');
     assert.equal(p.strokes.length, 1);
@@ -256,7 +250,7 @@ describe('カルテエディタ: 白紙（手書き・自由記述）ページ',
     clickByText(appEl(), 'button', '⌫ 消しゴム');
     firePointer(canvas, 'pointerdown', { x: 5, y: 5, pointerId: 6 });
     firePointer(canvas, 'pointerup', { x: 5, y: 5, pointerId: 6 });
-    await waitSaved();
+    await saveNow();
     saved = await getChart(ch.id);
     p = saved.pages.find((x) => x.name === '白紙（手書き・自由記述）');
     assert.equal(p.strokes[1].tool, 'eraser');
@@ -264,13 +258,13 @@ describe('カルテエディタ: 白紙（手書き・自由記述）ページ',
     fireClick(appEl().querySelector('.swatches .sw')); // 色を選ぶとpenツールに戻る
     fireInput(appEl().querySelector('.width-range'), '8');
     fireClick(byText(appEl(), 'button', '↶ 取消'));
-    await waitSaved();
+    await saveNow();
     saved = await getChart(ch.id);
     p = saved.pages.find((x) => x.name === '白紙（手書き・自由記述）');
     assert.equal(p.strokes.length, 1);
 
     fireChange(appEl().querySelector('.bg-select'), 'body-front');
-    await waitSaved();
+    await saveNow();
     saved = await getChart(ch.id);
     p = saved.pages.find((x) => x.name === '白紙（手書き・自由記述）');
     assert.equal(p.bg, 'body-front');
@@ -278,7 +272,7 @@ describe('カルテエディタ: 白紙（手書き・自由記述）ページ',
     fireInput(appEl().querySelector('.page-content textarea'), '姿勢がやや前傾');
     clickByText(appEl(), 'button', 'クリア');
     clickByText(document.body, '.modal-foot button', 'OK');
-    await waitSaved();
+    await saveNow();
     saved = await getChart(ch.id);
     p = saved.pages.find((x) => x.name === '白紙（手書き・自由記述）');
     assert.equal(p.strokes.length, 0);
@@ -300,9 +294,116 @@ describe('カルテエディタ: note ページ（将来のテンプレ拡張向
     await flush();
 
     fireInput(appEl().querySelector('.note-area'), '次回は下半身メニュー中心に');
-    await waitSaved();
+    await saveNow();
     const saved = await getChart(ch.id);
     const p = saved.pages.find((x) => x.name === '振り返り');
     assert.equal(p.text, '次回は下半身メニュー中心に');
+  });
+});
+
+describe('カルテエディタ: 保存ボタン（カウンセリング/同意書/カルテすべてに存在する）', () => {
+  test('karte: 保存ボタンが表示され、押すと保存済みになる', async () => {
+    const ch = await createChart(client.id, 'karte', '2026-06-01');
+    await nav(`#/client/${client.id}/chart/${ch.id}`);
+    assert.ok(byText(appEl(), '.crumbs button', '保存'), '保存ボタンが見当たらない');
+
+    gotoPageByName('本日の記録');
+    await flush();
+    fireInput(appEl().querySelector('.field-grid textarea'), '本日は絶好調');
+    assert.match(appEl().querySelector('#savedTag').textContent, /未保存/);
+
+    await saveNow();
+    assert.match(appEl().querySelector('#savedTag').textContent, /保存済み/);
+    assert.match(document.body.textContent, /保存しました/);
+    assert.equal((await getChart(ch.id)).pages.find((p) => p.name === '本日の記録').values.memo, '本日は絶好調');
+  });
+
+  test('counseling: 保存ボタンが表示され、押すと保存済みになる', async () => {
+    const ch = await createChart(client.id, 'counseling');
+    await nav(`#/client/${client.id}/chart/${ch.id}`);
+    assert.ok(byText(appEl(), '.crumbs button', '保存'), '保存ボタンが見当たらない');
+
+    fireInput(appEl().querySelector('textarea'), '担当者メモを記入'); // 顧客データページのheaderMemo
+    assert.match(appEl().querySelector('#savedTag').textContent, /未保存/);
+
+    await saveNow();
+    assert.match(appEl().querySelector('#savedTag').textContent, /保存済み/);
+    assert.equal((await getChart(ch.id)).pages[0].values.headerMemo, '担当者メモを記入');
+  });
+
+  test('precautions: 保存ボタンが表示され、押すと保存済みになる', async () => {
+    const ch = await createChart(client.id, 'precautions');
+    await nav(`#/client/${client.id}/chart/${ch.id}`);
+    assert.ok(byText(appEl(), '.crumbs button', '保存'), '保存ボタンが見当たらない');
+
+    appEl().querySelector('.field-inline input[type=checkbox]').click();
+    assert.match(appEl().querySelector('#savedTag').textContent, /未保存/);
+
+    await saveNow();
+    assert.match(appEl().querySelector('#savedTag').textContent, /保存済み/);
+    assert.equal((await getChart(ch.id)).pages[0].values.readPrecautions, true);
+  });
+});
+
+describe('カルテエディタ: 保存せず離れようとすると確認する', () => {
+  test('未保存のまま離れようとすると確認が出る。キャンセルで留まり編集内容は保持、OKで移動すると保存されない', async () => {
+    const ch = await createChart(client.id, 'karte', '2026-07-01');
+    await nav(`#/client/${client.id}/chart/${ch.id}`);
+    gotoPageByName('本日の記録');
+    await flush();
+    fireInput(appEl().querySelector('.field-grid textarea'), '保存してない編集');
+    assert.match(appEl().querySelector('#savedTag').textContent, /未保存/);
+
+    // 「戻る」に相当するハッシュ変更（リンククリックでも browser back でも同じ経路を通る）。
+    // location.hash 自体は即座に書き換わる（hashchangeの性質上ここでは戻せない）ため、
+    // 確認ダイアログが出ていることだけをまず見る
+    location.hash = '#/client/' + client.id;
+    await flush();
+    assert.match(document.body.textContent, /保存されていない変更があります/);
+
+    // キャンセル（留まる）: ガードが直前のハッシュ（エディタ）へ戻す。編集内容もメモリ上に残ったまま
+    clickByText(document.body, '.modal-foot button', 'キャンセル');
+    await flush();
+    assert.match(location.hash, /\/chart\//);
+    assert.equal(appEl().querySelector('.field-grid textarea').value, '保存してない編集');
+
+    // もう一度離れようとして、今度はOK（保存せず移動）
+    location.hash = '#/client/' + client.id;
+    await flush();
+    clickByText(document.body, '.modal-foot button', 'OK');
+    await flush();
+
+    assert.equal(location.hash, '#/client/' + client.id);
+    const saved = await getChart(ch.id);
+    assert.notEqual(saved.pages.find((p) => p.name === '本日の記録').values.memo, '保存してない編集');
+  });
+
+  test('保存してから離れると確認は出ない', async () => {
+    const ch = await createChart(client.id, 'karte', '2026-07-02');
+    await nav(`#/client/${client.id}/chart/${ch.id}`);
+    gotoPageByName('本日の記録');
+    await flush();
+    fireInput(appEl().querySelector('.field-grid textarea'), '保存する編集');
+    await saveNow();
+
+    location.hash = '#/client/' + client.id;
+    await flush();
+
+    assert.equal(location.hash, '#/client/' + client.id); // 確認なしで即移動
+    assert.doesNotMatch(document.body.textContent, /保存されていない変更があります/);
+    assert.equal((await getChart(ch.id)).pages.find((p) => p.name === '本日の記録').values.memo, '保存する編集');
+  });
+
+  test('日付を他のカルテと重複させて保存しようとすると失敗し、未保存のままになる', async () => {
+    await createChart(client.id, 'karte', '2026-08-01');
+    const ch = await createChart(client.id, 'karte', '2026-08-02');
+    await nav(`#/client/${client.id}/chart/${ch.id}`);
+
+    fireChange(appEl().querySelector('.date-edit input[type=date]'), '2026-08-01');
+    await saveNow();
+
+    assert.match(document.body.textContent, /既に存在します/);
+    assert.match(appEl().querySelector('#savedTag').textContent, /未保存/); // 保存できていない
+    assert.equal((await getChart(ch.id)).date, '2026-08-02'); // DB上は変更されていない
   });
 });

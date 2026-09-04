@@ -45,7 +45,9 @@ pt-karte/
   sw.js                  Service Worker
   css/styles.css
   js/
-    app.js               ルーター＋ビュー描画＋イベントハンドリング（UI層）
+    app.js               ルーター（未保存ガード付き）＋ビュー＋イベントハンドリング
+    ui.js                汎用UIキット（el/モーダル/トースト/日付整形）
+    fields.js             テンプレのページ/フィールド描画
     store.js              クライアント/カルテのCRUD（ドメイン層）
     templates.js          カルテテンプレート定義（データ）
     handwriting.js         手書きパッド（Canvas制御）
@@ -66,17 +68,23 @@ pt-karte/
 
 | モジュール | 責務 | 主な公開関数 |
 | --- | --- | --- |
-| `app.js` | ハッシュルーティング、DOM生成（`el()`）、モーダル/トースト、画面ごとのビュー関数 | （エントリポイント。exportは持たない） |
-| `store.js` | クライアント/チャートのCRUD、会員ID採番、記入日管理 | `newClient`, `nextMemberId`, `listClients`, `saveClient`, `deleteClient`, `createChart`, `saveChart`, `deleteChart`, `listCharts`, `listKartes`, `findChartByRole`, `todayISO` |
+| `app.js` | ハッシュルーティング（未保存の変更を破棄してよいか確認するガード付き）、画面ごとのビュー関数、クライアントフォーム | （エントリポイント。exportは持たない） |
+| `ui.js` | ドメイン非依存の汎用UIキット: DOM生成（`el()`）、モーダル/トースト/確認ダイアログ、日付整形 | `el`, `toast`, `modal`, `confirmDialog`, `fmtDate`, `calcAge` |
+| `fields.js` | テンプレートのページ/フィールドをDOMへ描画（フォーム・表・手書き・自由記述） | `renderFormPage`, `renderNotePage`, `renderCanvasPage`, `clientSummaryBlock`, `kindIcon` |
+| `store.js` | クライアント/チャートのCRUD、会員ID採番、記入日管理・重複チェック | `newClient`, `nextMemberId`, `listClients`, `saveClient`, `deleteClient`, `createChart`, `saveChart`, `deleteChart`, `listCharts`, `listKartes`, `findChartByRole`, `todayISO`, `isKarteDateTaken` |
 | `templates.js` | テンプレート定義（データのみ、副作用なし） | `TEMPLATES`, `getTemplate`, `instantiatePages`, `BODY_CHARTS` |
 | `handwriting.js` | Canvas上でのペン入力管理（ストロークのベクタ保存、undo/redo） | `HandwritingPad` クラス |
 | `export.js` | Excel/JSON書き出し、JSON読み込み | `exportClientXlsx`, `exportAll`, `importFile` |
 | `js/data/adapter.js` | データ層の差し替えポイント（現在は `local-adapter.js` を re-export） | `db`, `uid`, `requestPersistentStorage` |
 | `js/data/local-adapter.js` | IndexedDBの薄いラッパー | 上記と同じ関数群の実装 |
 
-依存の向き: `app.js → store.js/handwriting.js/export.js/templates.js`、
-`store.js → js/data/adapter.js`、`export.js → js/data/adapter.js, store.js`。
-循環依存は無い。
+依存の向き: `app.js → ui.js/fields.js/store.js/handwriting.js/export.js/templates.js`、
+`fields.js → ui.js/handwriting.js`、`store.js → js/data/adapter.js`、
+`export.js → js/data/adapter.js, store.js`。循環依存は無い。
+
+`fields.js`は手書きパッド（`HandwritingPad`）のライフサイクル（ページ切替時の破棄）を
+自分では管理せず、生成のたびに引数で渡された `registerPad(pad)` を呼ぶだけにしてある。
+実際に配列で保持して破棄するのは呼び出し側の`app.js`（`padInstances`/`clearPads`）。
 
 ## 4. データモデル（IndexedDB: DB名 `pt-karte`, version 1）
 
@@ -107,7 +115,7 @@ pt-karte/
 | `templateId` | string | `counseling` / `precautions` / `karte` |
 | `role` | string \| null | `counseling`/`precautions`はrole付き、`karte`はnull |
 | `title` | string \| null | role付きはテンプレ名固定、`karte`はnull（日付で管理するため） |
-| `date` | string(YYYY-MM-DD) \| null | `karte`のみ使用。記入日 |
+| `date` | string(YYYY-MM-DD) \| null | `karte`のみ使用。記入日。同じ`clientId`内で重複不可（`store.js`の`isKarteDateTaken`でチェック。作成時・保存時の両方で検証） |
 | `createdAt` / `updatedAt` | number | 作成/更新日時 |
 | `pages` | Page[] | ページ配列（下記） |
 
@@ -141,18 +149,39 @@ Stroke: `{ tool: 'pen'|'eraser', color, width(正規化), points: [[x,y,pressure
        └─ #/client/:id/chart/:chartId   カルテ/カウンセリング/注意書きエディタ
 ```
 
-ハッシュ変更は `window.addEventListener('hashchange', render)` で捕捉し、
-`render()` がハッシュを解析して該当ビュー関数を呼ぶ（`viewClientList` /
-`viewClientDetail` / `viewChartEditor`）。モーダル（クライアント追加/編集、
-バックアップ、削除確認等）は `document.body` に直接オーバーレイを追加する
-独立したポップアップとして実装し、ルーティングの対象にはしていない。
+ハッシュ変更は `window.addEventListener('hashchange', guardedRender)` で捕捉する。
+`guardedRender()` は実際の描画（`render()`）の前段に「未保存の変更を破棄してよいか」
+の確認を挟むガードで、中身は次のとおり:
+
+1. 直前の revert 操作（後述）による発火なら何もせず抜ける
+2. カルテエディタが未保存の変更を持っている（`unsavedGuard()`が`true`）なら
+   `confirmDialog()`で確認する。「移動しない」を選べば、`location.hash`を
+   直前の値に戻し（この代入自体も`hashchange`を発火するが、上記1でガード側は
+   再描画せずに素通りする＝今表示中の未保存の編集内容を保持したまま画面に留まる）
+3. それ以外は`render()`を呼び、ハッシュを解析して該当ビュー関数を呼ぶ
+   （`viewClientList` / `viewClientDetail` / `viewChartEditor`）
+
+`viewChartEditor`は表示中、モジュール内の`unsavedGuard`に「未保存の変更があるか」を
+返す関数をセットする。「保存」ボタン押下、またはページ離脱時に`null`へ戻る。
+`window.addEventListener('beforeunload', ...)`でタブを閉じる/リロードする場合にも
+同じ判定でブラウザ標準の確認を出す。
+
+モーダル（クライアント追加/編集、バックアップ、削除確認等）は`document.body`に
+直接オーバーレイを追加する独立したポップアップとして実装し、ルーティングの
+対象にはしていない。
 
 ## 6. 状態管理・保存方針
 
 - グローバルなstateストアは持たない。各ビュー関数がその都度IndexedDBから
   読み込み、DOMを再構築する（`app().replaceChildren(view)`）
-- 入力変更は `touch()`（保存中表示＋`debounce(450ms)`で`saveChart`/`saveClient`
-  を呼ぶ）を通して自動保存する。手書きストロークも同じ経路で保存される
+- **カルテ/カウンセリングシート/注意書きの保存は明示的**: 入力変更は
+  メモリ上の`chart`オブジェクトを直接書き換えるだけで、`markDirty()`が
+  「未保存の変更あり」フラグを立てて保存タグの表示を更新する。実際に
+  `saveChart()`を呼ぶのは「保存」ボタン（`doSave()`）を押したときだけ。
+  `karte`の保存時は記入日の重複チェック（`isKarteDateTaken`）も行い、
+  重複していれば保存を拒否してトースト表示する
+- クライアント基本情報（`clients`ストア）は元々モーダルの「作成」「保存」
+  ボタンでのみ書き込む設計のままで変更していない
 - ページ間移動時の表示位置は `sessionStorage`（`pg_<chartId>`キーでページindexのみ）
   に保持。個人情報は入れていない
 

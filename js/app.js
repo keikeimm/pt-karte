@@ -15,104 +15,52 @@ import {
   deleteChart,
   findChartByRole,
   todayISO,
+  isKarteDateTaken,
 } from './store.js';
-import { HandwritingPad } from './handwriting.js';
+import { el, toast, modal, confirmDialog, fmtDate, calcAge } from './ui.js';
+import { renderFormPage, renderNotePage, renderCanvasPage, clientSummaryBlock, kindIcon } from './fields.js';
 import { exportClientXlsx, exportAll, importFile } from './export.js';
 
-// ---------- DOM ヘルパー ----------
-// 注: innerHTML への書き込みは一切行わない（XSS対策）。テキストは常に
-// createTextNode 経由で挿入する。人体図SVG（固定文字列）は handwriting.js 側で
-// BODY_CHARTS の定数のみを innerHTML に渡しており、ユーザー入力は混ざらない。
-function el(tag, props = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(props || {})) {
-    if (k === 'class') node.className = v;
-    else if (k === 'dataset') Object.assign(node.dataset, v);
-    else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
-    else if (v === true) node.setAttribute(k, '');
-    else if (v !== false && v != null) node.setAttribute(k, v);
-  }
-  for (const c of children.flat()) {
-    if (c == null || c === false) continue;
-    node.append(c.nodeType ? c : document.createTextNode(String(c)));
-  }
-  return node;
-}
 const app = () => document.getElementById('app');
-const debounce = (fn, ms) => {
-  let t;
-  return (...a) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...a), ms);
-  };
-};
-const fmtDate = (ts) =>
-  new Date(ts).toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
-const esc = (s) => String(s ?? '');
 
-// ---------- トースト ----------
-function toast(msg) {
-  const t = el('div', { class: 'toast' }, msg);
-  document.body.append(t);
-  requestAnimationFrame(() => t.classList.add('show'));
-  setTimeout(() => {
-    t.classList.remove('show');
-    setTimeout(() => t.remove(), 300);
-  }, 2200);
-}
+// ---------- ルーター（未保存の変更を破棄してよいか確認するガード付き） ----------
+// カルテエディタ表示中は unsavedGuard に「未保存の変更があるか」を返す関数を
+// セットする。ハッシュが変わる（＝画面を離れる）たびにこれを確認し、
+// 未保存なら確認ダイアログを出す。キャンセルされたら直前のハッシュへ戻す。
+let unsavedGuard = null;
+let lastHash = location.hash;
+let suppressGuard = false;
 
-// ---------- モーダル ----------
-function modal({ title, body, actions }) {
-  const overlay = el('div', { class: 'overlay' });
-  const box = el('div', { class: 'modal' });
-  box.append(el('div', { class: 'modal-head' }, title));
-  const content = el('div', { class: 'modal-body' });
-  content.append(body);
-  box.append(content);
-  const foot = el('div', { class: 'modal-foot' });
-  const close = () => overlay.remove();
-  for (const a of actions || []) {
-    foot.append(
-      el(
-        'button',
-        {
-          class: 'btn ' + (a.primary ? 'btn-primary' : a.danger ? 'btn-danger' : 'btn-ghost'),
-          onclick: () => {
-            if (a.onClick) a.onClick(close);
-            else close();
-          },
-        },
-        a.label
-      )
-    );
+async function guardedRender() {
+  if (suppressGuard) {
+    // 直前のハッシュへ戻すための取り消し操作。今表示中の編集画面（未保存の
+    // 変更を含む）はそのままなので、再描画はしない
+    suppressGuard = false;
+    return;
   }
-  box.append(foot);
-  overlay.append(box);
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) close();
-  });
-  document.body.append(overlay);
-  return { close };
+  if (unsavedGuard && unsavedGuard()) {
+    const leave = await confirmDialog(
+      '保存されていない変更があります。保存せずに移動すると変更内容は失われます。移動しますか？',
+      { danger: true }
+    );
+    if (!leave) {
+      suppressGuard = true;
+      location.hash = lastHash; // 直前のハッシュへ戻す
+      return;
+    }
+  }
+  unsavedGuard = null;
+  lastHash = location.hash;
+  await render();
 }
-function confirmDialog(message, { danger } = {}) {
-  return new Promise((resolve) => {
-    modal({
-      title: '確認',
-      body: el('p', { class: 'confirm-msg' }, message),
-      actions: [
-        { label: 'キャンセル', onClick: (c) => (c(), resolve(false)) },
-        {
-          label: 'OK',
-          primary: !danger,
-          danger,
-          onClick: (c) => (c(), resolve(true)),
-        },
-      ],
-    });
-  });
-}
+window.addEventListener('hashchange', guardedRender);
+window.addEventListener('beforeunload', (e) => {
+  if (unsavedGuard && unsavedGuard()) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
-// ---------- ルーター ----------
 async function render() {
   clearPads();
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -130,7 +78,6 @@ async function render() {
   }
   updateNetBadge();
 }
-window.addEventListener('hashchange', render);
 
 // ---------- ビュー: クライアント一覧 ----------
 async function viewClientList() {
@@ -357,7 +304,7 @@ async function viewClientDetail(clientId) {
   const kSection = el('div', { class: 'section' },
     el('div', { class: 'section-head' },
       el('h3', {}, 'カルテ'),
-      el('button', { class: 'btn btn-primary', onclick: () => createKarteAndOpen(c) }, '＋ 本日のカルテ')
+      el('button', { class: 'btn btn-primary', onclick: () => pickKarteDate(c) }, '＋ カルテを作成')
     )
   );
   if (!kartes.length) {
@@ -388,9 +335,31 @@ async function viewClientDetail(clientId) {
   app().replaceChildren(view);
 }
 
-async function createKarteAndOpen(client) {
-  const ch = await createChart(client.id, 'karte');
-  location.hash = `#/client/${client.id}/chart/${ch.id}`;
+// 記入日を選んでカルテを新規作成する。同じ日付のカルテが既にあれば作成させない
+function pickKarteDate(client) {
+  const input = el('input', { type: 'date', value: todayISO() });
+  modal({
+    title: 'カルテを作成',
+    body: el('label', { class: 'field' }, el('span', {}, '記入日'), input),
+    actions: [
+      { label: 'キャンセル' },
+      {
+        label: '作成',
+        primary: true,
+        onClick: async (close) => {
+          const date = input.value;
+          if (!date) { toast('記入日を選んでください'); return; }
+          if (await isKarteDateTaken(client.id, date)) {
+            toast(`${fmtDate(date)} のカルテは既に作成されています`);
+            return;
+          }
+          const ch = await createChart(client.id, 'karte', date);
+          close();
+          location.hash = `#/client/${client.id}/chart/${ch.id}`;
+        },
+      },
+    ],
+  });
 }
 
 function clientCard(c) {
@@ -419,15 +388,6 @@ function clientCard(c) {
       row('備考', c.memo)
     )
   );
-}
-function calcAge(bd) {
-  const d = new Date(bd);
-  if (isNaN(d)) return '';
-  const now = new Date();
-  let a = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--;
-  return a >= 0 && a < 150 ? a : '';
 }
 
 function editClient(c) {
@@ -477,6 +437,9 @@ function clearPads() {
   for (const p of padInstances) p.destroy();
   padInstances = [];
 }
+function registerPad(pad) {
+  padInstances.push(pad);
+}
 
 async function viewChartEditor(clientId, chartId) {
   clearPads();
@@ -488,14 +451,22 @@ async function viewChartEditor(clientId, chartId) {
   const tpl = getTemplate(chart.templateId);
   let pageIdx = clampPage(chart, +sessionStorage.getItem('pg_' + chartId) || 0);
 
-  const save = debounce(async () => {
+  // 明示的な「保存」ボタンでのみ永続化する。それまでの変更はメモリ上のみで、
+  // このカルテを離れようとするとガード（guardedRender）が確認を出す
+  let dirty = false;
+  const markDirty = () => { dirty = true; updateSavedTag(); };
+  unsavedGuard = () => dirty;
+
+  async function doSave() {
+    if (!chart.role && (await isKarteDateTaken(chart.clientId, chart.date, chart.id))) {
+      toast(`記入日 ${fmtDate(chart.date)} のカルテは既に存在します。日付を変更してください。`);
+      return;
+    }
     await saveChart(chart);
-    setSaved();
-  }, 450);
-  const touch = () => {
-    setSaving();
-    save();
-  };
+    dirty = false;
+    updateSavedTag();
+    toast('保存しました');
+  }
 
   const view = el('div', { class: 'view editor' });
   const savedTag = el('span', { class: 'saved-tag', id: 'savedTag' }, '保存済み');
@@ -505,9 +476,11 @@ async function viewChartEditor(clientId, chartId) {
       el('a', { href: '#/client/' + clientId }, '← ' + (c.name || 'ファイル')),
       el('div', { class: 'spacer' }),
       savedTag,
+      el('button', { class: 'btn btn-primary', onclick: doSave }, '保存'),
       el('button', { class: 'btn btn-ghost btn-danger', onclick: async () => {
         const label = chart.role ? chart.title : `記入日 ${fmtDate(chart.date)} のカルテ`;
         if (await confirmDialog(`${label}を削除します。`, { danger: true })) {
+          dirty = false; // 削除確定後は「未保存の変更」確認を出さない
           await deleteChart(chart);
           location.hash = '#/client/' + clientId;
         }
@@ -524,7 +497,7 @@ async function viewChartEditor(clientId, chartId) {
           el('span', {}, 'カルテ：'),
           el('input', {
             type: 'date', value: chart.date || todayISO(),
-            onchange: (e) => { chart.date = e.target.value; touch(); },
+            onchange: (e) => { chart.date = e.target.value; markDirty(); },
           })
         )
   ));
@@ -550,13 +523,11 @@ async function viewChartEditor(clientId, chartId) {
   drawNav();
   drawPage();
 
-  function setSaving() {
+  function updateSavedTag() {
     const t = document.getElementById('savedTag');
-    if (t) { t.textContent = '保存中…'; t.classList.add('dirty'); }
-  }
-  function setSaved() {
-    const t = document.getElementById('savedTag');
-    if (t) { t.textContent = '保存済み'; t.classList.remove('dirty'); }
+    if (!t) return;
+    t.textContent = dirty ? '未保存の変更があります' : '保存済み';
+    t.classList.toggle('dirty', dirty);
   }
   function go(dir) {
     let i = pageIdx;
@@ -601,7 +572,7 @@ async function viewChartEditor(clientId, chartId) {
         el('input', {
           type: 'checkbox', ...(p.skipped ? { checked: true } : {}),
           ...(p.skippable ? {} : { disabled: true }),
-          onchange: (e) => { p.skipped = e.target.checked; touch(); drawNav(); },
+          onchange: (e) => { p.skipped = e.target.checked; markDirty(); drawNav(); },
         }),
         el('span', {}, 'このページを飛ばす')
       )
@@ -609,9 +580,9 @@ async function viewChartEditor(clientId, chartId) {
     bodyWrap.append(head);
 
     const container = el('div', { class: 'page-content ' + p.kind });
-    if (p.kind === 'canvas') renderCanvasPage(p, container, touch);
-    else if (p.kind === 'note') renderNotePage(p, container, touch);
-    else renderFormPage(p, container, touch, c);
+    if (p.kind === 'canvas') renderCanvasPage(p, container, markDirty, registerPad);
+    else if (p.kind === 'note') renderNotePage(p, container, markDirty);
+    else renderFormPage(p, container, markDirty, c, registerPad);
     bodyWrap.append(container);
   }
 }
@@ -631,210 +602,8 @@ function clientStrip(c) {
   );
 }
 
-function kindIcon(k) {
-  return k === 'canvas' ? '✎' : k === 'note' ? '⌨' : '☑';
-}
-
 function clampPage(chart, i) {
   return Math.min(Math.max(i | 0, 0), chart.pages.length - 1);
-}
-
-// ---------- ページ描画: note ----------
-function renderNotePage(p, container, touch) {
-  const ta = el('textarea', { class: 'note-area', placeholder: p.placeholder || '自由記入', rows: 14 });
-  ta.value = p.text || '';
-  ta.addEventListener('input', () => { p.text = ta.value; touch(); });
-  container.append(ta);
-}
-
-// ---------- ページ描画: canvas ----------
-function renderCanvasPage(p, container, touch) {
-  const colors = ['#1f2937', '#dc2626', '#2563eb', '#059669', '#d97706'];
-  const state = { color: colors[0], width: 3 };
-
-  const bar = el('div', { class: 'pad-toolbar' });
-  const pad = new HandwritingPad(el('div'), {
-    color: state.color,
-    width: state.width,
-    onChange: (strokes) => { p.strokes = strokes; touch(); },
-  });
-  padInstances.push(pad);
-
-  const penBtn = el('button', { class: 'tb active', onclick: () => setTool('pen') }, '✎ ペン');
-  const eraBtn = el('button', { class: 'tb', onclick: () => setTool('eraser') }, '⌫ 消しゴム');
-  function setTool(t) {
-    pad.setTool(t);
-    penBtn.classList.toggle('active', t === 'pen');
-    eraBtn.classList.toggle('active', t === 'eraser');
-  }
-  bar.append(penBtn, eraBtn);
-
-  const swatches = el('div', { class: 'swatches' });
-  const swEls = colors.map((col) => {
-    const s = el('button', { class: 'sw' + (col === state.color ? ' sel' : ''), style: `--c:${col}`, onclick: () => {
-      state.color = col;
-      pad.setColor(col);
-      setTool('pen');
-      for (const x of swEls) x.classList.toggle('sel', x === s);
-    } });
-    return s;
-  });
-  swatches.append(...swEls);
-  bar.append(swatches);
-
-  const wr = el('input', { type: 'range', min: 1, max: 12, value: state.width, class: 'width-range', oninput: (e) => pad.setWidth(+e.target.value) });
-  bar.append(el('label', { class: 'tb-range' }, '太さ', wr));
-
-  bar.append(
-    el('button', { class: 'tb', onclick: () => pad.undo() }, '↶ 取消'),
-    el('button', { class: 'tb', onclick: () => pad.redo() }, '↷ やり直し'),
-    el('button', { class: 'tb', onclick: async () => { if (await confirmDialog('この手書きを全て消去します。')) pad.clear(); } }, 'クリア')
-  );
-
-  // 背景（人体図）選択
-  const bgSel = el('select', { class: 'bg-select', onchange: (e) => { p.bg = e.target.value || null; pad.setBackground(p.bg); touch(); } });
-  bgSel.append(el('option', { value: '' }, '背景なし'));
-  const bgLabels = { 'body-front': '人体図（前面）', 'body-back': '人体図（背面）', 'posture-side': '姿勢（矢状面）', 'posture-front': '姿勢（前額面）' };
-  for (const [k, label] of Object.entries(bgLabels)) {
-    bgSel.append(el('option', { value: k, ...(p.bg === k ? { selected: true } : {}) }, label));
-  }
-  bar.append(el('label', { class: 'tb-range' }, '背景', bgSel));
-
-  container.append(bar, pad.wrap);
-  pad.load(p.strokes || [], p.bg);
-
-  // メモ欄（打ち込み併用）
-  for (const f of p.fields || []) {
-    if (f.type === 'textarea' || f.type === 'text') {
-      container.append(renderField(f, p.values, touch));
-    }
-  }
-}
-
-// ---------- ページ描画: form ----------
-function renderFormPage(p, container, touch, client) {
-  const grid = el('div', { class: 'field-grid' });
-  for (const f of p.fields || []) {
-    grid.append(renderField(f, p.values, touch, client));
-  }
-  container.append(grid);
-}
-
-function renderField(f, values, touch, client) {
-  if (f.type === 'heading') return el('h4', { class: 'field-heading' }, f.label);
-
-  if (f.type === 'static') {
-    if (f.key === '_clientSummary') return client ? clientSummaryBlock(client) : el('div');
-    return el('div', { class: 'static-text' }, f.text || '');
-  }
-
-  if (f.type === 'table') return renderTable(f, values, touch);
-
-  if (f.type === 'sign') {
-    const box = el('div', { class: 'sign-box' });
-    const pad = new HandwritingPad(box, {
-      width: 2.5,
-      onChange: (s) => { values[f.key] = s; touch(); },
-    });
-    padInstances.push(pad);
-    setTimeout(() => pad.load(values[f.key] || [], null), 0);
-    return el('div', { class: 'field field-wide' },
-      el('span', {}, f.label),
-      box,
-      el('button', { class: 'btn btn-ghost btn-sm', onclick: async () => { if (await confirmDialog('署名を消去します。')) pad.clear(); } }, '署名クリア')
-    );
-  }
-
-  const wide = f.type === 'textarea';
-  const wrap = el('label', { class: 'field' + (wide ? ' field-wide' : '') }, el('span', {}, f.label));
-  let input;
-  if (f.type === 'textarea') {
-    input = el('textarea', { rows: f.rows || 2 });
-    input.value = values[f.key] || '';
-    input.addEventListener('input', () => { values[f.key] = input.value; touch(); });
-  } else if (f.type === 'select') {
-    input = el('select');
-    input.append(el('option', { value: '' }, '—'));
-    for (const o of f.options || []) input.append(el('option', { value: o, ...(values[f.key] === o ? { selected: true } : {}) }, o));
-    input.addEventListener('change', () => { values[f.key] = input.value; touch(); });
-  } else if (f.type === 'checkbox') {
-    input = el('input', { type: 'checkbox', ...(values[f.key] ? { checked: true } : {}) });
-    input.addEventListener('change', () => { values[f.key] = input.checked; touch(); });
-    return el('label', { class: 'field field-inline' }, input, el('span', {}, f.label));
-  } else if (f.type === 'yesno') {
-    const name = 'yn_' + Math.random().toString(36).slice(2);
-    const mk = (v) => {
-      const r = el('input', { type: 'radio', name, ...(values[f.key] === v ? { checked: true } : {}) });
-      r.addEventListener('change', () => { values[f.key] = v; touch(); });
-      return el('label', { class: 'radio' }, r, el('span', {}, v));
-    };
-    return el('div', { class: 'field field-wide field-yesno' }, el('span', {}, f.label), el('div', { class: 'yn' }, mk('はい'), mk('いいえ')));
-  } else {
-    input = el('input', { type: f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text' });
-    input.value = values[f.key] || '';
-    input.addEventListener('input', () => { values[f.key] = input.value; touch(); });
-  }
-  wrap.append(input);
-  return wrap;
-}
-
-function clientSummaryBlock(c) {
-  const row = (k, v) => v ? el('tr', {}, el('th', {}, k), el('td', {}, v)) : null;
-  const emergency = [c.emergencyName, c.emergencyRelation && `（${c.emergencyRelation}）`, c.emergencyPhone].filter(Boolean).join(' ');
-  return el('table', { class: 'client-summary' },
-    row('会員ID', c.memberId),
-    row('氏名', c.name),
-    row('フリガナ', c.kana),
-    row('生年月日', c.birthday + (calcAge(c.birthday) !== '' ? `（${calcAge(c.birthday)}歳）` : '')),
-    row('性別', c.sex),
-    row('電話', c.phone),
-    row('目標', c.goal),
-    row('ケガ・既往', c.injuryHistory),
-    row('持病・服薬・アレルギー', c.medicalNotes),
-    row('緊急連絡先', emergency),
-    row('かかりつけ医', c.doctor)
-  );
-}
-
-function renderTable(f, values, touch) {
-  if (!Array.isArray(values[f.key])) {
-    values[f.key] = (f.rows || []).map((r) => ({ ...r }));
-  }
-  const rows = values[f.key];
-  const wrap = el('div', { class: 'field field-wide' }, el('span', {}, f.label));
-  const table = el('table', { class: 'grid-table' });
-  const thead = el('tr', {}, f.columns.map((c) => el('th', {}, c.label)), el('th', {}));
-  table.append(thead);
-
-  function drawRows() {
-    for (const tr of [...table.querySelectorAll('tr.data')]) tr.remove();
-    rows.forEach((rowData, ri) => {
-      const tr = el('tr', { class: 'data' });
-      for (const col of f.columns) {
-        const td = el('td', {});
-        let input;
-        if (col.type === 'select') {
-          input = el('select');
-          input.append(el('option', { value: '' }, '—'));
-          for (const o of col.options || []) input.append(el('option', { value: o, ...(rowData[col.key] === o ? { selected: true } : {}) }, o));
-          input.addEventListener('change', () => { rowData[col.key] = input.value; touch(); });
-        } else {
-          input = el('input', { type: 'text' });
-          input.value = rowData[col.key] || '';
-          input.addEventListener('input', () => { rowData[col.key] = input.value; touch(); });
-        }
-        td.append(input);
-        tr.append(td);
-      }
-      const del = el('td', {}, el('button', { class: 'row-del', title: '行を削除', onclick: () => { rows.splice(ri, 1); touch(); drawRows(); } }, '×'));
-      tr.append(del);
-      table.append(tr);
-    });
-  }
-  drawRows();
-  wrap.append(el('div', { class: 'table-scroll' }, table));
-  wrap.append(el('button', { class: 'btn btn-ghost btn-sm', onclick: () => { rows.push({}); touch(); drawRows(); } }, '＋ 行を追加'));
-  return wrap;
 }
 
 // ---------- ネットワーク表示 ----------

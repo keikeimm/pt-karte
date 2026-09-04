@@ -133,3 +133,10 @@ export async function findChartByRole(clientId, role) {
   const all = await db.getAllByIndex('charts', 'by_client', clientId);
   return all.find((ch) => ch.role === role) || null;
 }
+
+// 同じクライアントの他のカルテ（karte）が既にその記入日を使っていないか確認する。
+// excludeChartId には（日付変更中の）自分自身のidを渡して除外できる。
+export async function isKarteDateTaken(clientId, date, excludeChartId) {
+  const kartes = await listKartes(clientId);
+  return kartes.some((k) => k.date === date && k.id !== excludeChartId);
+}

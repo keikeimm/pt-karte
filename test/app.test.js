@@ -4,7 +4,7 @@
 import 'fake-indexeddb/auto';
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installDom, installXlsx, fireClick, fireInput, fireChange, byText, clickByText, flush } from './setup/dom-env.js';
+import { installDom, installXlsx, fireClick, fireInput, fireChange, byText, clickByText, flush, navForce, appRoot } from './setup/dom-env.js';
 
 const dom = installDom();
 installXlsx(dom); // 「このクライアントを書き出す（Excel）」ボタンが参照するグローバル XLSX
@@ -14,16 +14,8 @@ const { db } = await import('../js/data/adapter.js');
 const { newClient, saveClient, createChart, getClient, getChart, listCharts } = await import('../js/store.js');
 await import('../js/app.js'); // 副作用: hashchangeを購読し、初回renderを実行
 
-function nav(hash) {
-  // location.hash が既に同じ値だと hashchange が発火せず再描画されないため、
-  // 一度ダミーの hash を経由して確実に render() を呼ばせる。
-  location.hash = '#/__force__';
-  location.hash = hash;
-  return flush();
-}
-function appEl() {
-  return document.getElementById('app');
-}
+const nav = navForce;
+const appEl = appRoot;
 function cleanupOverlays() {
   document.querySelectorAll('.overlay, .toast').forEach((n) => n.remove());
 }
@@ -221,16 +213,34 @@ describe('クライアント詳細（ファイルを開いた状態）', () => {
     assert.match(cards[0].textContent, /2026\/02\/01/);
   });
 
-  test('「＋ 本日のカルテ」はテンプレ選択なしに即座にカルテを作りエディタへ遷移する', async () => {
+  test('「＋ カルテを作成」で記入日を選んで作成し、エディタへ遷移する', async () => {
     await nav('#/client/' + client.id);
-    clickByText(appEl(), 'button', '＋ 本日のカルテ');
+    clickByText(appEl(), 'button', '＋ カルテを作成');
+    const modal = document.querySelector('.modal');
+    fireChange(modal.querySelector('input[type=date]'), '2026-05-10');
+    clickByText(document.body, '.modal-foot button', '作成');
     await flush();
 
     assert.match(location.hash, /\/chart\//);
     const charts = await listCharts(client.id);
     assert.equal(charts.length, 1);
     assert.equal(charts[0].templateId, 'karte');
-    assert.equal(charts[0].date, new Date().toISOString().slice(0, 10));
+    assert.equal(charts[0].date, '2026-05-10');
+  });
+
+  test('既に作成済みの記入日ではカルテを作成できない', async () => {
+    await createChart(client.id, 'karte', '2026-05-10');
+    await nav('#/client/' + client.id);
+    clickByText(appEl(), 'button', '＋ カルテを作成');
+    const modal = document.querySelector('.modal');
+    fireChange(modal.querySelector('input[type=date]'), '2026-05-10');
+    clickByText(document.body, '.modal-foot button', '作成');
+    await flush();
+
+    assert.match(document.body.textContent, /既に作成されています/);
+    assert.ok(document.querySelector('.modal'), 'モーダルは閉じずに残っている');
+    assert.equal((await listCharts(client.id)).length, 1); // 追加作成されていない
+    cleanupOverlays();
   });
 
   test('カルテ一覧は記入日の新しい順に並ぶ', async () => {
