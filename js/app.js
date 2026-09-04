@@ -2,6 +2,7 @@ import { requestPersistentStorage } from './data/adapter.js';
 import { TEMPLATES, getTemplate } from './templates.js';
 import {
   newClient,
+  nextMemberId,
   listClients,
   getClient,
   saveClient,
@@ -19,11 +20,13 @@ import { HandwritingPad } from './handwriting.js';
 import { exportClientXlsx, exportAll, importFile } from './export.js';
 
 // ---------- DOM ヘルパー ----------
+// 注: innerHTML への書き込みは一切行わない（XSS対策）。テキストは常に
+// createTextNode 経由で挿入する。人体図SVG（固定文字列）は handwriting.js 側で
+// BODY_CHARTS の定数のみを innerHTML に渡しており、ユーザー入力は混ざらない。
 function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
     if (k === 'class') node.className = v;
-    else if (k === 'html') node.innerHTML = v;
     else if (k === 'dataset') Object.assign(node.dataset, v);
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
     else if (v === true) node.setAttribute(k, '');
@@ -155,12 +158,12 @@ async function viewClientList() {
   const list = el('div', { class: 'card-list', id: 'clientList' });
   for (const c of clients) {
     list.append(
-      el('a', { class: 'file-card', href: '#/client/' + c.id, dataset: { name: (c.name + ' ' + c.kana).toLowerCase() } },
+      el('a', { class: 'file-card', href: '#/client/' + c.id, dataset: { name: (c.name + ' ' + c.kana + ' ' + c.memberId).toLowerCase() } },
         el('div', { class: 'file-tab' }, c.name ? c.name.slice(0, 1) : '？'),
         el('div', { class: 'file-main' },
           el('div', { class: 'file-name' }, c.name || '(名称未設定)'),
           el('div', { class: 'file-sub muted' },
-            [c.kana, c.goal].filter(Boolean).join('・') || 'タップして開く')
+            [c.memberId, c.kana, c.goal].filter(Boolean).join('・') || 'タップして開く')
         ),
         el('div', { class: 'file-meta muted' }, '更新 ' + fmtDate(c.updatedAt))
       )
@@ -194,6 +197,7 @@ async function addClient() {
             toast('未入力の必須項目があります: ' + missing.join('、'));
             return;
           }
+          c.memberId = await nextMemberId();
           await saveClient(c);
           close();
           location.hash = '#/client/' + c.id;
@@ -234,14 +238,18 @@ function backupMenu() {
 }
 
 // ---------- クライアント編集フォーム ----------
-// 氏名〜利用開始日は入力必須
-const CLIENT_REQUIRED_KEYS = ['name', 'kana', 'birthday', 'sex', 'phone', 'email', 'startDate'];
+// 入力必須は最小限（氏名・フリガナ・生年月日・性別・利用開始日）。
+// 電話・メールは任意（連絡手段が無い/教えたくない顧客もいるため必須にしない）
+const CLIENT_REQUIRED_KEYS = ['name', 'kana', 'birthday', 'sex', 'startDate'];
+// 数字以外を入力させないフィールド（本人の電話・緊急連絡先の電話）
+const PHONE_KEYS = ['phone', 'emergencyPhone'];
 
 function clientForm(c) {
   const entries = [];
   const f = (key, label, kind = 'text', opts = {}) => {
     const id = 'cf_' + key;
     const required = CLIENT_REQUIRED_KEYS.includes(key);
+    const isPhone = kind === 'text' && PHONE_KEYS.includes(key);
     let input;
     if (kind === 'textarea') {
       input = el('textarea', { id, rows: opts.rows || 2 });
@@ -253,9 +261,9 @@ function clientForm(c) {
         input.append(el('option', { value: o, ...(c[key] === o ? { selected: true } : {}) }, o));
       }
     } else {
-      input = el('input', { id, type: kind === 'text' && key === 'phone' ? 'tel' : kind });
+      input = el('input', { id, type: isPhone ? 'tel' : kind });
       input.value = c[key] || '';
-      if (key === 'phone') {
+      if (isPhone) {
         input.setAttribute('inputmode', 'numeric');
         input.setAttribute('placeholder', '09012345678');
         // 数字以外は入力させない（全角数字は半角に正規化してから除去）
@@ -277,16 +285,24 @@ function clientForm(c) {
     f('kana', 'フリガナ'),
     f('birthday', '生年月日', 'date'),
     f('sex', '性別', 'select', { options: ['男', '女', 'その他'] }),
-    f('phone', '電話', 'text'),
+    f('phone', '電話'),
     f('email', 'メール'),
     f('startDate', '利用開始日', 'date'),
-    f('goal', '目標', 'text'),
+    f('goal', '目標'),
     f('exerciseHistory', '運動歴', 'textarea'),
     f('injuryHistory', 'ケガ・整形外科的既往', 'textarea'),
     f('medicalNotes', '持病・服薬・アレルギー', 'textarea'),
+    el('h4', { class: 'field-heading' }, '緊急連絡先'),
+    f('emergencyName', '緊急連絡先（氏名）'),
+    f('emergencyRelation', '続柄'),
+    f('emergencyPhone', '緊急連絡先（電話）'),
+    f('doctor', 'かかりつけ医・病院'),
     f('memo', '備考', 'textarea'),
   ];
-  const node = el('div', { class: 'form-grid' }, wraps);
+  const memberIdNote = el('p', { class: 'muted' },
+    c.memberId ? `会員ID: ${c.memberId}` : '会員IDは保存時に自動採番されます'
+  );
+  const node = el('div', {}, memberIdNote, el('div', { class: 'form-grid' }, wraps));
   return {
     node,
     apply() {
@@ -380,12 +396,13 @@ async function createKarteAndOpen(client) {
 function clientCard(c) {
   const row = (label, val) => val ? el('div', { class: 'kv' }, el('span', { class: 'k' }, label), el('span', { class: 'v' }, val)) : null;
   const age = c.birthday ? calcAge(c.birthday) : '';
+  const emergency = [c.emergencyName, c.emergencyRelation && `（${c.emergencyRelation}）`, c.emergencyPhone].filter(Boolean).join(' ');
   return el('div', { class: 'client-card' },
     el('div', { class: 'client-card-head' },
       el('div', { class: 'client-avatar' }, c.name ? c.name.slice(0, 1) : '？'),
       el('div', {},
         el('div', { class: 'client-name' }, c.name || '(名称未設定)'),
-        el('div', { class: 'muted' }, [c.kana, age && `${age}歳`, c.sex].filter(Boolean).join('・'))
+        el('div', { class: 'muted' }, [c.memberId, c.kana, age && `${age}歳`, c.sex].filter(Boolean).join('・'))
       )
     ),
     el('div', { class: 'kv-grid' },
@@ -397,6 +414,8 @@ function clientCard(c) {
       row('運動歴', c.exerciseHistory),
       row('ケガ・既往', c.injuryHistory),
       row('持病・服薬・アレルギー', c.medicalNotes),
+      row('緊急連絡先', emergency),
+      row('かかりつけ医', c.doctor),
       row('備考', c.memo)
     )
   );
@@ -761,7 +780,9 @@ function renderField(f, values, touch, client) {
 
 function clientSummaryBlock(c) {
   const row = (k, v) => v ? el('tr', {}, el('th', {}, k), el('td', {}, v)) : null;
+  const emergency = [c.emergencyName, c.emergencyRelation && `（${c.emergencyRelation}）`, c.emergencyPhone].filter(Boolean).join(' ');
   return el('table', { class: 'client-summary' },
+    row('会員ID', c.memberId),
     row('氏名', c.name),
     row('フリガナ', c.kana),
     row('生年月日', c.birthday + (calcAge(c.birthday) !== '' ? `（${calcAge(c.birthday)}歳）` : '')),
@@ -769,7 +790,9 @@ function clientSummaryBlock(c) {
     row('電話', c.phone),
     row('目標', c.goal),
     row('ケガ・既往', c.injuryHistory),
-    row('持病・服薬・アレルギー', c.medicalNotes)
+    row('持病・服薬・アレルギー', c.medicalNotes),
+    row('緊急連絡先', emergency),
+    row('かかりつけ医', c.doctor)
   );
 }
 

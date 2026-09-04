@@ -5,6 +5,7 @@ import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   newClient,
+  nextMemberId,
   listClients,
   getClient,
   saveClient,
@@ -32,8 +33,19 @@ describe('store.js（clients）', () => {
     const c = newClient({ name: '山田太郎' });
     assert.equal(c.name, '山田太郎');
     assert.equal(c.goal, '');
+    assert.equal(c.memberId, '');
+    assert.equal(c.emergencyName, '');
+    assert.equal(c.doctor, '');
     assert.ok(c.id.length > 0);
     assert.equal(typeof c.createdAt, 'number');
+  });
+
+  test('nextMemberId は M00001 から始まり、既存の最大値+1を採番する', async () => {
+    assert.equal(await nextMemberId(), 'M00001');
+    await saveClient(newClient({ name: 'A', memberId: await nextMemberId() }));
+    assert.equal(await nextMemberId(), 'M00002');
+    await saveClient(newClient({ name: 'B', memberId: 'M00099' }));
+    assert.equal(await nextMemberId(), 'M00100');
   });
 
   test('saveClient → listClients で保存・一覧取得できる', async () => {

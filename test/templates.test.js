@@ -45,6 +45,11 @@ describe('templates.js', () => {
     assert.equal(pages[0].name, '運動参加の注意事項');
   });
 
+  test('precautions に「緊急連絡先・かかりつけ医」ページは無い（顧客の基本情報に移設済み）', () => {
+    const names = instantiatePages(getTemplate('precautions')).map((p) => p.name);
+    assert.deepEqual(names, ['運動参加の注意事項', '免責・キャンセルポリシー']);
+  });
+
   test('counseling テンプレは「同意・署名」ページを持たない（注意書きチャートと重複するため削除済み）', () => {
     const pages = instantiatePages(getTemplate('counseling'));
     const names = pages.map((p) => p.name);

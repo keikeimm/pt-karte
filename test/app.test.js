@@ -109,6 +109,71 @@ describe('クライアント新規作成', () => {
     assert.equal(all[0].sex, '男');
     assert.equal(location.hash, '#/client/' + all[0].id);
   });
+
+  test('電話・メールは未入力でも作成できる（必須ではない）', async () => {
+    await nav('#/');
+    clickByText(appEl(), 'button', '＋ クライアント');
+    const modal = document.querySelector('.modal');
+    fireInput(modal.querySelector('#cf_name'), '任意項目太郎');
+    fireInput(modal.querySelector('#cf_kana'), 'タロウ');
+    fireInput(modal.querySelector('#cf_birthday'), '1990-01-01');
+    fireChange(modal.querySelector('#cf_sex'), '男');
+    fireInput(modal.querySelector('#cf_startDate'), '2026-01-01');
+    // 電話・メールは空のまま
+
+    clickByText(document.body, '.modal-foot button', '作成');
+    await flush();
+
+    const all = await db.getAll('clients');
+    assert.equal(all.length, 1);
+    assert.equal(all[0].phone, '');
+    assert.equal(all[0].email, '');
+  });
+
+  test('作成すると会員IDが自動採番され、一覧・詳細に表示される', async () => {
+    await nav('#/');
+    clickByText(appEl(), 'button', '＋ クライアント');
+    let modal = document.querySelector('.modal');
+    assert.match(modal.textContent, /会員IDは保存時に自動採番されます/);
+
+    fireInput(modal.querySelector('#cf_name'), '採番太郎');
+    fireInput(modal.querySelector('#cf_kana'), 'サイバン');
+    fireInput(modal.querySelector('#cf_birthday'), '1990-01-01');
+    fireChange(modal.querySelector('#cf_sex'), '男');
+    fireInput(modal.querySelector('#cf_startDate'), '2026-01-01');
+    clickByText(document.body, '.modal-foot button', '作成');
+    await flush();
+
+    const all = await db.getAll('clients');
+    assert.equal(all[0].memberId, 'M00001');
+
+    await nav('#/');
+    assert.match(appEl().textContent, /M00001/);
+
+    await nav('#/client/' + all[0].id);
+    assert.match(appEl().querySelector('.client-card').textContent, /M00001/);
+  });
+
+  test('2人目のクライアントは会員IDが連番になる', async () => {
+    const c1 = newClient({ name: 'A', kana: 'A', birthday: '1990-01-01', sex: '男', startDate: '2026-01-01' });
+    c1.memberId = 'M00001';
+    await saveClient(c1);
+
+    await nav('#/');
+    clickByText(appEl(), 'button', '＋ クライアント');
+    const modal = document.querySelector('.modal');
+    fireInput(modal.querySelector('#cf_name'), 'B');
+    fireInput(modal.querySelector('#cf_kana'), 'B');
+    fireInput(modal.querySelector('#cf_birthday'), '1990-01-01');
+    fireChange(modal.querySelector('#cf_sex'), '女');
+    fireInput(modal.querySelector('#cf_startDate'), '2026-01-01');
+    clickByText(document.body, '.modal-foot button', '作成');
+    await flush();
+
+    const all = await db.getAll('clients');
+    const b = all.find((c) => c.name === 'B');
+    assert.equal(b.memberId, 'M00002');
+  });
 });
 
 describe('クライアント詳細（ファイルを開いた状態）', () => {
@@ -188,6 +253,27 @@ describe('クライアント詳細（ファイルを開いた状態）', () => {
 
     assert.match(appEl().querySelector('.client-card').textContent, /体脂肪率-5%/);
     assert.equal((await getClient(client.id)).goal, '体脂肪率-5%');
+  });
+
+  test('緊急連絡先・かかりつけ医は基本情報の編集フォームに入っており、保存後カードに表示される', async () => {
+    await nav('#/client/' + client.id);
+    clickByText(appEl(), 'button', '顧客データを編集');
+    const modal = document.querySelector('.modal');
+    fireInput(modal.querySelector('#cf_emergencyName'), '編集花子');
+    fireInput(modal.querySelector('#cf_emergencyRelation'), '配偶者');
+    fireInput(modal.querySelector('#cf_emergencyPhone'), '080-9999-8888');
+    fireInput(modal.querySelector('#cf_doctor'), '〇〇クリニック');
+    clickByText(document.body, '.modal-foot button', '保存');
+    await flush();
+
+    const saved = await getClient(client.id);
+    assert.equal(saved.emergencyName, '編集花子');
+    assert.equal(saved.emergencyPhone, '08099998888'); // 数字以外は自動除去
+    assert.equal(saved.doctor, '〇〇クリニック');
+
+    const cardText = appEl().querySelector('.client-card').textContent;
+    assert.match(cardText, /編集花子/);
+    assert.match(cardText, /〇〇クリニック/);
   });
 
   test('クライアント削除で一覧に戻り、データが消える', async () => {

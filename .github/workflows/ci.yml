@@ -33,9 +33,23 @@ jobs:
           path: coverage/
           retention-days: 14
 
+  security:
+    name: Security (npm audit, high/critical = fail)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # devDependencies（テスト用ツールチェーン）の既知の高/致命的脆弱性をゲート。
+      # 配信物(index.html/js/css)は npm 依存を持たないため対象外。
+      - run: npm audit --audit-level=high
+
   deploy:
     name: Deploy to GitHub Pages
-    needs: test
+    needs: [test, security]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

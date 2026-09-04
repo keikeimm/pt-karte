@@ -6,6 +6,7 @@ export function newClient(partial = {}) {
   const now = Date.now();
   return {
     id: uid('c_'),
+    memberId: '', // 保存前に nextMemberId() で自動採番する
     name: '',
     kana: '',
     birthday: '',
@@ -17,11 +18,29 @@ export function newClient(partial = {}) {
     injuryHistory: '',
     medicalNotes: '',
     exerciseHistory: '',
+    emergencyName: '',
+    emergencyRelation: '',
+    emergencyPhone: '',
+    doctor: '',
     memo: '',
     createdAt: now,
     updatedAt: now,
     ...partial,
   };
+}
+
+const MEMBER_ID_PREFIX = 'M';
+const MEMBER_ID_DIGITS = 5;
+
+// 既存クライアントの会員IDの最大値+1を採番する（例: M00001, M00002, ...）。
+// クライアント新規登録時に自動付与する（手入力・編集はさせない）。
+export async function nextMemberId() {
+  const all = await db.getAll('clients');
+  const max = all.reduce((m, c) => {
+    const n = parseInt(String(c.memberId || '').replace(/^\D+/, ''), 10);
+    return Number.isFinite(n) && n > m ? n : m;
+  }, 0);
+  return MEMBER_ID_PREFIX + String(max + 1).padStart(MEMBER_ID_DIGITS, '0');
 }
 
 export async function listClients() {

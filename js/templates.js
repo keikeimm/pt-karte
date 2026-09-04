@@ -175,7 +175,7 @@ export const TEMPLATES = [
     icon: '⚠️',
     role: 'precautions',
     skipHeaderPage: true, // 顧客データはクライアント詳細の上部カードに既出のため省略
-    description: '運動参加の注意事項・免責・緊急連絡先',
+    description: '運動参加の注意事項・免責（緊急連絡先は顧客の基本情報を参照）',
     pages: [
       {
         name: '運動参加の注意事項',
@@ -210,17 +210,6 @@ export const TEMPLATES = [
           { type: 'checkbox', key: 'agreeWaiver', label: '免責事項・キャンセルポリシーに同意します' },
           { type: 'date', key: 'signDate', label: '記入日' },
           { type: 'sign', key: 'signature', label: '本人署名' },
-        ],
-      },
-      {
-        name: '緊急連絡先・かかりつけ医',
-        kind: 'form',
-        fields: [
-          { type: 'text', key: 'emgName', label: '緊急連絡先（氏名）' },
-          { type: 'text', key: 'emgRelation', label: '続柄' },
-          { type: 'text', key: 'emgPhone', label: '電話番号' },
-          { type: 'text', key: 'doctor', label: 'かかりつけ医・病院' },
-          { type: 'textarea', key: 'emgNote', label: '搬送時に伝えるべき情報（持病・薬・アレルギー）', rows: 2 },
         ],
       },
     ],

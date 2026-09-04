@@ -24,6 +24,9 @@
 | 指定したページを飛ばせる | 各ページの「このページを飛ばす」トグル。前後送りはスキップ扱い（タップで開くことは可能） |
 | 頭に顧客データ | クライアント詳細は顧客データを常時上部表示。各カルテの1ページ目に顧客サマリーを自動表示 |
 | カルテは記入日で管理 | 「＋ 本日のカルテ」でその場で作成（テンプレ選択なし）。記入日はその場で変更可、一覧は日付の新しい順 |
+| 会員IDを自動採番 | クライアント新規登録時に `M00001` 形式で自動付与（手入力・編集は不可） |
+| 必須項目は最小限 | 氏名・フリガナ・生年月日・性別・利用開始日のみ必須。電話・メールは任意 |
+| 緊急連絡先は基本情報に統合 | 旧・注意書きテンプレの「緊急連絡先・かかりつけ医」ページを廃止し、クライアント基本情報の項目に統合 |
 
 ### シート構成
 
@@ -89,15 +92,41 @@ npm run test:coverage # カバレッジ計測つき（c8）。lines/branches/fun
 - `test/app.test.js` / `test/app.chart-editor.test.js`: 画面遷移・フォーム入力・
   カルテの記入日管理（作成・表示順・その場での日付変更）・ページスキップ送りなどの
   結合テスト（jsdom上でクリック/入力イベントを実際に発火させて検証）
+- `test/security.test.js`: セキュリティテスト。ソースの静的検証（外部通信・
+  `eval`・`innerHTML`代入・外部URL参照が無いこと）と、XSSペイロード（HTML/scriptタグ）
+  をクライアント名・メモ・テーブル欄・JSONバックアップ経由で実際に流し込み、
+  DOMに注入されないことの動的検証
 - カバレッジ閾値: **lines/statements 80%, functions 80%, branches 75%**
   （`package.json` の `test:coverage` に指定。除外: `js/data/adapter.js` は
   ただの re-export のため対象外）
 
-**CI/CD**（`.github/workflows/ci.yml`）: push・PR で `test` ジョブ（`npm ci` →
-`npm run test:coverage`、失敗すればビルド全体が赤くなる）を実行し、`main` への
-push 時は `test` が通った場合のみ `deploy` ジョブが GitHub Pages に反映する
-（`needs: test` でゲート）。デプロイ物には `test/`・`tools/`・`package*.json` は含めない
+**CI/CD**（`.github/workflows/ci.yml`）: push・PR で `test`（`npm ci` →
+`npm run test:coverage`、失敗すればビルド全体が赤くなる）と `security`
+（`npm audit --audit-level=high`）を実行し、`main` への push 時はその両方が
+通った場合のみ `deploy` ジョブが GitHub Pages に反映する（`needs: [test, security]`
+でゲート）。デプロイ物には `test/`・`tools/`・`package*.json` は含めない
 （`rsync --exclude` でステージングしてからアップロード）。
+
+---
+
+## セキュリティ
+
+顧客データは常にこの端末のブラウザ内（IndexedDB）に閉じ、ユーザーが明示的に
+書き出さない限り外部に送信されない設計。具体的な対策・検証方法は
+[非機能要件定義書](docs/02_nonfunctional_requirements.md) §3 と
+`test/security.test.js` を参照。要点:
+
+- XSS対策: 画面描画は常に `textContent`/属性経由（`innerHTML`にユーザー入力を渡さない）
+- Excel書き出しの数式インジェクション対策: `=`/`+`/`-`/`@`で始まる値を無害化してから書き込む
+- 外部通信ゼロ（`fetch`/`XMLHttpRequest`等を自前コードで使用していない）
+- 依存パッケージの脆弱性をCIで`npm audit`ゲート
+
+---
+
+## ドキュメント
+
+要件・設計・仕様・運用の詳細は [`docs/`](docs/README.md) を参照:
+機能要件定義書・非機能要件定義書・設計書・仕様書・運用手順書。
 
 ---
 

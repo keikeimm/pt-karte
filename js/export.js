@@ -58,8 +58,9 @@ export async function exportClientXlsx(client) {
 }
 
 function clientInfoSheet(c) {
-  const ws = XLSX.utils.aoa_to_sheet([
+  const rows = [
     ['項目', '内容'],
+    ['会員ID', c.memberId],
     ['氏名', c.name],
     ['フリガナ', c.kana],
     ['生年月日', c.birthday],
@@ -71,8 +72,13 @@ function clientInfoSheet(c) {
     ['運動歴', c.exerciseHistory],
     ['ケガ・整形外科的既往', c.injuryHistory],
     ['持病・服薬・アレルギー', c.medicalNotes],
+    ['緊急連絡先（氏名）', c.emergencyName],
+    ['緊急連絡先（続柄）', c.emergencyRelation],
+    ['緊急連絡先（電話）', c.emergencyPhone],
+    ['かかりつけ医・病院', c.doctor],
     ['備考', c.memo],
-  ]);
+  ].map(([k, v]) => [k, sanitizeCell(v)]);
+  const ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!cols'] = [{ wch: 24 }, { wch: 50 }];
   return ws;
 }
@@ -103,7 +109,7 @@ function pageValueRows(page) {
     if (f.type === 'table') {
       rows.push([f.label]);
       rows.push(f.columns.map((c) => c.label));
-      for (const r of page.values[f.key] || []) rows.push(f.columns.map((c) => r[c.key] ?? ''));
+      for (const r of page.values[f.key] || []) rows.push(f.columns.map((c) => sanitizeCell(r[c.key] ?? '')));
       continue;
     }
     if (f.type === 'sign') {
@@ -111,11 +117,19 @@ function pageValueRows(page) {
       continue;
     }
     const v = page.values[f.key];
-    rows.push([f.label, v === true ? 'はい' : v === false ? 'いいえ' : v ?? '']);
+    rows.push([f.label, sanitizeCell(v === true ? 'はい' : v === false ? 'いいえ' : v ?? '')]);
   }
-  if (page.kind === 'note' && page.text) rows.push(['メモ', page.text]);
+  if (page.kind === 'note' && page.text) rows.push(['メモ', sanitizeCell(page.text)]);
   if (page.kind === 'canvas') rows.push(['手書き', (page.strokes || []).length ? 'あり（アプリ内で参照）' : 'なし']);
   return rows;
+}
+
+// Excel/CSVの数式インジェクション対策。セルの先頭が = + - @ や制御文字だと、
+// 開いたスプレッドシートソフトによっては数式として解釈されうるため、
+// 表示上ほぼ変わらない範囲で先頭に ' を付け、常に文字列として扱わせる。
+function sanitizeCell(v) {
+  if (typeof v !== 'string') return v;
+  return /^[=+\-@\t\r]/.test(v) ? "'" + v : v;
 }
 
 // ---- 共通: ダウンロード発火 ----
