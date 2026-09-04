@@ -1,5 +1,5 @@
 // クライアント / カルテの CRUD。
-import { db, uid } from './db.js';
+import { db, uid } from './data/adapter.js';
 import { getTemplate, instantiatePages } from './templates.js';
 
 export function newClient(partial = {}) {

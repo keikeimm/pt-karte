@@ -195,23 +195,7 @@ export const TEMPLATES = [
           { type: 'textarea', key: 'painNote', label: '痛み・違和感・可動制限のメモ', rows: 3 },
         ],
       },
-      {
-        name: '同意・署名',
-        kind: 'form',
-        skippable: false,
-        fields: [
-          {
-            type: 'static',
-            key: '_consentText',
-            text:
-              '私は上記の内容に相違ないことを確認し、体調に不安がある場合は事前に申告します。' +
-              '運動プログラムへの参加は自己の意思によるものであり、既往症・体調変化は速やかに担当トレーナーへ伝えます。',
-          },
-          { type: 'checkbox', key: 'agree', label: '上記に同意します' },
-          { type: 'date', key: 'signDate', label: '記入日' },
-          { type: 'sign', key: 'signature', label: '本人署名' },
-        ],
-      },
+      // 同意・署名は「注意事項・免責同意書」チャートに一本化したのでここでは持たない
     ],
   },
 

@@ -1,4 +1,4 @@
-import { requestPersistentStorage } from './db.js';
+import { requestPersistentStorage } from './data/adapter.js';
 import { TEMPLATES, getTemplate, BLANK_PAGE_KINDS } from './templates.js';
 import {
   newClient,

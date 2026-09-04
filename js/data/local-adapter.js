@@ -1,4 +1,8 @@
-// 依存なしの薄い IndexedDB ラッパー。
+// ローカル実装（IndexedDB）。「データアダプタの契約」（adapter.js 参照）を満たす。
+// 将来 Firebase / Supabase / PocketBase 等に差し替える場合は、この契約と
+// 同じ関数シグネチャを持つ別ファイルを用意し、adapter.js の re-export 先を
+// 変えるだけでよい（store.js / export.js / app.js 側は一切変更不要）。
+//
 // DB: pt-karte / v1  stores: clients, charts(by_client), settings
 const DB_NAME = 'pt-karte';
 const DB_VERSION = 1;
@@ -64,7 +68,8 @@ export const db = {
     }),
 };
 
-// 端末データ削除への耐性を少しでも上げる
+// 端末データ削除への耐性を少しでも上げる（ブラウザローカル固有。リモート
+// アダプタでは意味がないため no-op を export しておけば呼び出し側は無変更でよい）
 export async function requestPersistentStorage() {
   try {
     if (navigator.storage && navigator.storage.persist) {

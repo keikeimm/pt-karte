@@ -1,5 +1,5 @@
 // JSON でのバックアップ / 復元。サーバーが無いので端末外へ持ち出す唯一の手段。
-import { db } from './db.js';
+import { db } from './data/adapter.js';
 import { listCharts } from './store.js';
 
 const FORMAT = 'pt-karte-backup';

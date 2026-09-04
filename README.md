@@ -68,6 +68,27 @@ python3 -m http.server 8000
 
 ---
 
+## アーキテクチャ／将来のBaaS移行について
+
+保存先は `js/data/adapter.js` の1ファイルに集約してあり、`store.js` / `export.js` /
+`app.js` はこのファイルからしか `db` / `uid` / `requestPersistentStorage` を
+import しない。今は `local-adapter.js`（IndexedDB）を re-export しているだけ。
+
+Firebase・Supabase・PocketBaseなど無料枠のある汎用BaaSに乗せ替えたくなったら:
+
+1. `js/data/adapter.js` に書いてある契約（`get`/`getAll`/`getAllByIndex`/`put`/
+   `delete`/`clear`/`bulkPut`/`uid`/`requestPersistentStorage`）と同じ関数を持つ
+   `firebase-adapter.js` 等を新規作成
+2. `adapter.js` 末尾の re-export 先をそちらに変更
+
+の2ステップで済み、`store.js` 以下は無修正で動く想定。Firestoreはオフライン
+キャッシュ＋オンライン復帰時の自動同期を標準搭載しているので、「オフライン
+必須」の要件を保ったままクラウド同期を足せる（`adapter.js` 内にコード例あり）。
+
+**現時点ではまだIndexedDBのみ。移行は未着手。**
+
+---
+
 ## 制限（モックのため）
 
 - 認証・複数端末同期・監査ログなし
