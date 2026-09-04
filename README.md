@@ -68,6 +68,37 @@ python3 -m http.server 8000
 
 ---
 
+## テスト / CI・CD
+
+配信物（`index.html`/`css`/`js`/`sw.js`/`manifest`）はビルド不要のままだが、
+テストは Node（`node:test` 標準テストランナー）+ `jsdom`（DOM）+
+`fake-indexeddb`（本物同等のIndexedDB）で書いてある。`devDependencies` のみで、
+アプリ本体の実行には一切影響しない。
+
+```sh
+npm ci                # devDependencies を1回だけインストール
+npm test              # 単体・結合テスト（node:test）
+npm run test:coverage # カバレッジ計測つき（c8）。lines/branches/functionsに閾値ゲートあり
+```
+
+- `test/templates.test.js` / `test/store.test.js` / `test/export.test.js`: テンプレ定義・
+  データ層（IndexedDB経由のCRUD）・バックアップ入出力の単体テスト
+- `test/handwriting.test.js`: 手書きパッド（ストローク記録・undo/redo・背景切替）の単体テスト
+- `test/app.test.js` / `test/app.chart-editor.test.js`: 画面遷移・フォーム入力・
+  カルテ編集・ページスキップ送り・テンプレ選択の重複防止などの結合テスト
+  （jsdom上でクリック/入力イベントを実際に発火させて検証）
+- カバレッジ閾値: **lines/statements 80%, functions 80%, branches 75%**
+  （`package.json` の `test:coverage` に指定。除外: `js/data/adapter.js` は
+  ただの re-export のため対象外）
+
+**CI/CD**（`.github/workflows/ci.yml`）: push・PR で `test` ジョブ（`npm ci` →
+`npm run test:coverage`、失敗すればビルド全体が赤くなる）を実行し、`main` への
+push 時は `test` が通った場合のみ `deploy` ジョブが GitHub Pages に反映する
+（`needs: test` でゲート）。デプロイ物には `test/`・`tools/`・`package*.json` は含めない
+（`rsync --exclude` でステージングしてからアップロード）。
+
+---
+
 ## アーキテクチャ／将来のBaaS移行について
 
 保存先は `js/data/adapter.js` の1ファイルに集約してあり、`store.js` / `export.js` /
