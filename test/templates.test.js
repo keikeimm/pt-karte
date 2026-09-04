@@ -1,32 +1,39 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { TEMPLATES, getTemplate, instantiatePages, BLANK_PAGE_KINDS, BODY_CHARTS } from '../js/templates.js';
+import { TEMPLATES, getTemplate, instantiatePages, BODY_CHARTS } from '../js/templates.js';
 
 describe('templates.js', () => {
-  test('7種類のテンプレートが定義されている', () => {
-    assert.equal(TEMPLATES.length, 7);
-    const ids = TEMPLATES.map((t) => t.id);
+  test('テンプレートは3種類のみ（counseling / precautions / karte）', () => {
     assert.deepEqual(
-      [...ids].sort(),
-      ['assessment', 'blank', 'body-composition', 'counseling', 'nutrition', 'precautions', 'session'].sort()
+      TEMPLATES.map((t) => t.id).sort(),
+      ['counseling', 'karte', 'precautions']
     );
   });
 
-  test('role を持つのは counseling と precautions のみ', () => {
+  test('role を持つのは counseling と precautions のみ。karte は role なし', () => {
     const roled = TEMPLATES.filter((t) => t.role).map((t) => t.id).sort();
     assert.deepEqual(roled, ['counseling', 'precautions']);
+    assert.equal(getTemplate('karte').role, undefined);
   });
 
   test('getTemplate は id で引ける・存在しなければ null', () => {
-    assert.equal(getTemplate('session').name, 'トレーニングセッション記録');
+    assert.equal(getTemplate('karte').name, 'カルテ');
     assert.equal(getTemplate('nope'), null);
   });
 
-  test('instantiatePages: 通常テンプレは先頭に顧客データページが付く', () => {
-    const pages = instantiatePages(getTemplate('session'));
+  test('instantiatePages: karte は先頭に顧客データページが付く', () => {
+    const pages = instantiatePages(getTemplate('karte'));
     assert.equal(pages[0].name, '顧客データ');
     assert.equal(pages[0].skippable, false);
-    assert.equal(pages.length, getTemplate('session').pages.length + 1);
+    assert.equal(pages.length, getTemplate('karte').pages.length + 1);
+  });
+
+  test('karte のタブ構成: 本日の記録 / メニュー・測定記録 / 白紙（手書き・自由記述）', () => {
+    const pages = instantiatePages(getTemplate('karte'));
+    const names = pages.map((p) => p.name);
+    assert.deepEqual(names, ['顧客データ', '本日の記録', 'メニュー・測定記録', '白紙（手書き・自由記述）']);
+    assert.equal(pages.find((p) => p.name === '白紙（手書き・自由記述）').kind, 'canvas');
+    assert.equal(pages.find((p) => p.name === 'メニュー・測定記録').fields[0].type, 'table');
   });
 
   test('instantiatePages: skipHeaderPage を持つ precautions は顧客データページを省略', () => {
@@ -46,12 +53,12 @@ describe('templates.js', () => {
   });
 
   test('instantiatePages: 各ページは独立したid/values/strokesを持つ（テンプレ本体を汚染しない）', () => {
-    const tpl = getTemplate('body-composition');
+    const tpl = getTemplate('karte');
     const a = instantiatePages(tpl);
     const b = instantiatePages(tpl);
     assert.notEqual(a[1].id, b[1].id);
-    a[1].values.weight = '70';
-    assert.equal(b[1].values.weight, undefined);
+    a[1].values.condition = '良い';
+    assert.equal(b[1].values.condition, undefined);
     assert.deepEqual(a[1].strokes, []);
   });
 
@@ -83,16 +90,5 @@ describe('templates.js', () => {
         }
       }
     }
-  });
-
-  test('BLANK_PAGE_KINDS は form/note/canvas の3種', () => {
-    assert.deepEqual(BLANK_PAGE_KINDS.map((k) => k.kind).sort(), ['canvas', 'form', 'note']);
-  });
-
-  test('blank テンプレは顧客データ+白紙noteページの2ページから始まる', () => {
-    const pages = instantiatePages(getTemplate('blank'));
-    assert.equal(pages.length, 2);
-    assert.equal(pages[0].name, '顧客データ');
-    assert.equal(pages[1].kind, 'note');
   });
 });

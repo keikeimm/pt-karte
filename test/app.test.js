@@ -4,9 +4,10 @@
 import 'fake-indexeddb/auto';
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installDom, fireClick, fireInput, fireChange, byText, clickByText, flush } from './setup/dom-env.js';
+import { installDom, installXlsx, fireClick, fireInput, fireChange, byText, clickByText, flush } from './setup/dom-env.js';
 
-installDom();
+const dom = installDom();
+installXlsx(dom); // 「このクライアントを書き出す（Excel）」ボタンが参照するグローバル XLSX
 document.body.innerHTML = '<header><span id="netBadge"></span></header><main id="app"></main>';
 
 const { db } = await import('../js/data/adapter.js');
@@ -147,42 +148,34 @@ describe('クライアント詳細（ファイルを開いた状態）', () => {
   test('カウンセリング/注意書きチャートはカルテ一覧に重複表示されない', async () => {
     await createChart(client.id, 'counseling');
     await createChart(client.id, 'precautions');
-    await createChart(client.id, 'session');
+    await createChart(client.id, 'karte', '2026-02-01');
     await nav('#/client/' + client.id);
 
     const cards = appEl().querySelectorAll('.chart-card');
     assert.equal(cards.length, 1);
-    assert.match(cards[0].textContent, /トレーニングセッション記録/);
+    assert.match(cards[0].textContent, /2026\/02\/01/);
   });
 
-  test('新規カルテのテンプレ選択にカウンセリング/注意書きは出ない', async () => {
+  test('「＋ 本日のカルテ」はテンプレ選択なしに即座にカルテを作りエディタへ遷移する', async () => {
     await nav('#/client/' + client.id);
-    clickByText(appEl(), 'button', '＋ 新規カルテ');
-    const names = [...document.querySelectorAll('.tpl-card .tpl-name')].map((n) => n.textContent);
-    assert.ok(!names.includes('初回カウンセリングシート'));
-    assert.ok(!names.includes('注意事項・免責同意書'));
-    assert.ok(names.includes('トレーニングセッション記録'));
-  });
-
-  test('テンプレを選ばず作成しようとするとトースト', async () => {
-    await nav('#/client/' + client.id);
-    clickByText(appEl(), 'button', '＋ 新規カルテ');
-    clickByText(document.body, '.modal-foot button', '作成');
+    clickByText(appEl(), 'button', '＋ 本日のカルテ');
     await flush();
-    assert.match(document.body.textContent, /種類を選んでください/);
-    cleanupOverlays();
-  });
 
-  test('テンプレを選んで作成するとエディタへ遷移する', async () => {
-    await nav('#/client/' + client.id);
-    clickByText(appEl(), 'button', '＋ 新規カルテ');
-    // .tpl-name（子要素）をクリック → button.tpl-card までバブリングしてonclickが発火する
-    clickByText(document.body, '.tpl-name', '体組成・身体測定記録');
-    clickByText(document.body, '.modal-foot button', '作成');
-    await flush();
     assert.match(location.hash, /\/chart\//);
     const charts = await listCharts(client.id);
-    assert.equal(charts[0].templateId, 'body-composition');
+    assert.equal(charts.length, 1);
+    assert.equal(charts[0].templateId, 'karte');
+    assert.equal(charts[0].date, new Date().toISOString().slice(0, 10));
+  });
+
+  test('カルテ一覧は記入日の新しい順に並ぶ', async () => {
+    await createChart(client.id, 'karte', '2026-01-01');
+    await createChart(client.id, 'karte', '2026-03-01');
+    await createChart(client.id, 'karte', '2026-02-01');
+    await nav('#/client/' + client.id);
+
+    const titles = [...appEl().querySelectorAll('.chart-title')].map((n) => n.textContent);
+    assert.deepEqual(titles, ['2026/03/01', '2026/02/01', '2026/01/01']);
   });
 
   test('顧客データを編集すると保存され画面に反映される', async () => {
@@ -210,5 +203,12 @@ describe('クライアント詳細（ファイルを開いた状態）', () => {
   test('存在しないクライアントIDは一覧にリダイレクトされる', async () => {
     await nav('#/client/does-not-exist');
     assert.equal(location.hash, '#/');
+  });
+
+  test('「このクライアントを書き出す（Excel）」でxlsxが書き出される', async () => {
+    await nav('#/client/' + client.id);
+    clickByText(appEl(), 'button', 'このクライアントを書き出す（Excel）');
+    await flush();
+    assert.match(document.body.textContent, /書き出し: .*\.xlsx/);
   });
 });

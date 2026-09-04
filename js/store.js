@@ -52,11 +52,24 @@ export async function listCharts(clientId) {
   return all;
 }
 
+// role を持たない（＝記入日で管理する）カルテだけを、日付の新しい順で返す。
+// カウンセリングシート・注意書きは専用ボタン側にあるためここには含めない。
+export async function listKartes(clientId) {
+  const all = await listCharts(clientId);
+  return all.filter((ch) => !ch.role).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
 export function getChart(id) {
   return db.get('charts', id);
 }
 
-export async function createChart(clientId, templateId, title) {
+export function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// role を持つテンプレート（counseling/precautions）はタイトル固定・日付なし。
+// role を持たないテンプレート（karte）は記入日（date）で管理する。
+export async function createChart(clientId, templateId, date) {
   const tpl = getTemplate(templateId);
   if (!tpl) throw new Error('unknown template: ' + templateId);
   const now = Date.now();
@@ -65,7 +78,8 @@ export async function createChart(clientId, templateId, title) {
     clientId,
     templateId,
     role: tpl.role || null,
-    title: title || tpl.name,
+    title: tpl.role ? tpl.name : null,
+    date: tpl.role ? null : date || todayISO(),
     createdAt: now,
     updatedAt: now,
     pages: instantiatePages(tpl),

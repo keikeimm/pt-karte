@@ -6,7 +6,7 @@
   "description": "パーソナルトレーナー向けカルテ管理PWA（テスト用の devDependencies のみ。配信物はビルド不要の素のHTML/CSS/JS）",
   "scripts": {
     "test": "node --test",
-    "test:coverage": "c8 --all --src js --include \"js/**/*.js\" --exclude \"js/data/adapter.js\" --reporter=text --reporter=lcov --reporter=text-summary --check-coverage --lines 80 --functions 80 --branches 75 node --test"
+    "test:coverage": "c8 --all --src js --include \"js/**/*.js\" --exclude \"js/data/adapter.js\" --exclude \"js/vendor/**\" --reporter=text --reporter=lcov --reporter=text-summary --check-coverage --lines 80 --functions 80 --branches 75 node --test"
   },
   "devDependencies": {
     "c8": "^12.0.0",

@@ -1,5 +1,5 @@
-// カルテエディタ（ページ描画・各フィールド種別・手書き・スキップ送り・
-// ページ追加/削除・名称変更/削除）の結合テスト。
+// カルテエディタ（ページ＝タブ描画・各フィールド種別・手書き・スキップ送り・
+// 記入日の変更・削除）の結合テスト。
 import 'fake-indexeddb/auto';
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,7 +9,7 @@ installDom();
 document.body.innerHTML = '<header><span id="netBadge"></span></header><main id="app"></main>';
 
 const { db } = await import('../js/data/adapter.js');
-const { newClient, saveClient, createChart, getChart } = await import('../js/store.js');
+const { newClient, saveClient, createChart, saveChart, getChart, todayISO } = await import('../js/store.js');
 await import('../js/app.js');
 
 function nav(hash) {
@@ -47,7 +47,7 @@ beforeEach(async () => {
 
 describe('カルテエディタ: 共通', () => {
   test('ページナビは pages 数だけ表示され、先頭がactive・顧客データが頭に出る', async () => {
-    const ch = await createChart(client.id, 'session');
+    const ch = await createChart(client.id, 'karte');
     await nav(`#/client/${client.id}/chart/${ch.id}`);
 
     const chips = appEl().querySelectorAll('.pchip');
@@ -58,7 +58,7 @@ describe('カルテエディタ: 共通', () => {
   });
 
   test('ページ送り・戻りとページ数表示', async () => {
-    const ch = await createChart(client.id, 'session');
+    const ch = await createChart(client.id, 'karte');
     await nav(`#/client/${client.id}/chart/${ch.id}`);
     assert.equal(appEl().querySelector('#pageCount').textContent, `1 / ${ch.pages.length}`);
 
@@ -72,37 +72,45 @@ describe('カルテエディタ: 共通', () => {
   });
 
   test('ページを飛ばす設定にすると、送りボタンでスキップされる', async () => {
-    const ch = await createChart(client.id, 'session');
+    const ch = await createChart(client.id, 'karte');
     await nav(`#/client/${client.id}/chart/${ch.id}`);
 
-    // 「セッション情報」「メニュー記録」は skippable:false なのでスキップ不可な別ページを使う
-    gotoPageByName(ch.pages[3].name); // 有酸素・コンディショニング
+    // 「顧客データ」「本日の記録」は skippable:false なのでスキップ不可な別ページを使う
+    gotoPageByName('メニュー・測定記録'); // index 2
     await flush();
     appEl().querySelector('.skip-toggle input').click();
     await flush();
-    assert.ok(appEl().querySelectorAll('.pchip')[3].classList.contains('skipped'));
+    assert.ok(appEl().querySelectorAll('.pchip')[2].classList.contains('skipped'));
 
-    gotoPageByName(ch.pages[2].name); // メニュー記録へ
+    gotoPageByName('本日の記録'); // index 1
     await flush();
-    clickByText(appEl(), 'button', '次のページ →'); // 4番目はスキップされ5番目へ
+    clickByText(appEl(), 'button', '次のページ →'); // 2番目(index2)はスキップされ3番目(index3)へ
     await flush();
-    assert.equal(pageTitle(), ch.pages[4].name);
+    assert.equal(pageTitle(), '白紙（手書き・自由記述）');
   });
 
-  test('名称変更で editor-title が更新される', async () => {
-    const ch = await createChart(client.id, 'session');
+  test('記入日はその場で変更でき、保存される', async () => {
+    const ch = await createChart(client.id, 'karte', '2026-04-01');
     await nav(`#/client/${client.id}/chart/${ch.id}`);
-    clickByText(appEl(), 'button', '名称変更');
-    const input = document.querySelector('.modal input');
-    fireInput(input, '9月分セッション記録');
-    clickByText(document.body, '.modal-foot button', '保存');
-    await flush();
-    assert.match(appEl().querySelector('.editor-title').textContent, /9月分セッション記録/);
-    assert.equal((await getChart(ch.id)).title, '9月分セッション記録');
+    assert.match(appEl().querySelector('.editor-title').textContent, /カルテ/);
+
+    const dateInput = appEl().querySelector('.date-edit input[type=date]');
+    assert.equal(dateInput.value, '2026-04-01');
+    fireChange(dateInput, '2026-04-15');
+    await waitSaved();
+
+    assert.equal((await getChart(ch.id)).date, '2026-04-15');
+  });
+
+  test('counseling/precautions はテンプレ名固定で表示（日付編集は出ない）', async () => {
+    const ch = await createChart(client.id, 'counseling');
+    await nav(`#/client/${client.id}/chart/${ch.id}`);
+    assert.match(appEl().querySelector('.editor-title').textContent, /初回カウンセリングシート/);
+    assert.equal(appEl().querySelector('.date-edit'), null);
   });
 
   test('削除でクライアント詳細に戻り、カルテが消える', async () => {
-    const ch = await createChart(client.id, 'session');
+    const ch = await createChart(client.id, 'karte');
     await nav(`#/client/${client.id}/chart/${ch.id}`);
     clickByText(appEl(), 'button', '削除');
     clickByText(document.body, '.modal-foot button', 'OK');
@@ -118,41 +126,43 @@ describe('カルテエディタ: 共通', () => {
 });
 
 describe('カルテエディタ: フォームフィールド', () => {
-  test('text/number/select/textarea を入力すると保存される（session）', async () => {
-    const ch = await createChart(client.id, 'session');
+  test('select/number/textarea を入力すると保存される（本日の記録）', async () => {
+    const ch = await createChart(client.id, 'karte');
     await nav(`#/client/${client.id}/chart/${ch.id}`);
-    gotoPageByName('セッション情報');
+    gotoPageByName('本日の記録');
     await flush();
 
     const grid = appEl().querySelector('.field-grid');
-    fireInput(grid.querySelector('input[type=date]'), '2026-02-01');
-    fireInput(grid.querySelector('input[type=number]'), '12');
-    const selects = grid.querySelectorAll('select');
-    fireChange(selects[0], '良い'); // 体調
-    fireInput(grid.querySelector('textarea'), '腕立て10回できた');
+    fireChange(grid.querySelector('select'), '良い'); // 体調
+    const numbers = grid.querySelectorAll('input[type=number]');
+    fireInput(numbers[0], '7'); // 睡眠時間
+    fireInput(numbers[1], '65.5'); // 体重
+    fireInput(numbers[2], '18.2'); // 体脂肪率
+    fireInput(grid.querySelector('textarea'), '絶好調');
     await waitSaved();
 
     const saved = await getChart(ch.id);
-    const p = saved.pages.find((x) => x.name === 'セッション情報');
-    assert.equal(p.values.date, '2026-02-01');
-    assert.equal(p.values.sessionNo, '12');
+    const p = saved.pages.find((x) => x.name === '本日の記録');
     assert.equal(p.values.condition, '良い');
-    assert.equal(p.values.homeworkCheck, '腕立て10回できた');
+    assert.equal(p.values.sleepHours, '7');
+    assert.equal(p.values.weight, '65.5');
+    assert.equal(p.values.bodyFat, '18.2');
+    assert.equal(p.values.memo, '絶好調');
   });
 
-  test('テーブルフィールドは行の追加・削除ができる（メニュー記録）', async () => {
-    const ch = await createChart(client.id, 'session');
+  test('テーブルフィールドは行の追加・削除ができる（メニュー・測定記録）', async () => {
+    const ch = await createChart(client.id, 'karte');
     await nav(`#/client/${client.id}/chart/${ch.id}`);
-    gotoPageByName('メニュー記録');
+    gotoPageByName('メニュー・測定記録');
     await flush();
 
     const rowsBefore = appEl().querySelectorAll('.grid-table tr.data').length;
-    fireInput(appEl().querySelector('.grid-table tr.data input'), 'ベンチプレス');
+    fireInput(appEl().querySelector('.grid-table tr.data input'), 'スクワット');
     clickByText(appEl(), 'button', '＋ 行を追加');
     await flush();
     assert.equal(appEl().querySelectorAll('.grid-table tr.data').length, rowsBefore + 1);
 
-    // 追加した末尾の（空の）行だけを削除し、先頭の「ベンチプレス」行は残す
+    // 追加した末尾の（空の）行だけを削除し、先頭の「スクワット」行は残す
     const delButtons = appEl().querySelectorAll('.row-del');
     fireClick(delButtons[delButtons.length - 1]);
     await flush();
@@ -160,8 +170,8 @@ describe('カルテエディタ: フォームフィールド', () => {
 
     await waitSaved();
     const saved = await getChart(ch.id);
-    const p = saved.pages.find((x) => x.name === 'メニュー記録');
-    assert.ok(p.values.menu.some((r) => r.ex === 'ベンチプレス'));
+    const p = saved.pages.find((x) => x.name === 'メニュー・測定記録');
+    assert.ok(p.values.items.some((r) => r.name === 'スクワット'));
   });
 
   test('yesno フィールド（PAR-Q+）を選択できる（counseling）', async () => {
@@ -223,11 +233,11 @@ describe('カルテエディタ: フォームフィールド', () => {
   });
 });
 
-describe('カルテエディタ: 手書きページ（canvas）', () => {
-  test('ペン/消しゴム切替・色・太さ・undo/redo・背景選択・クリアが一通り動く', async () => {
-    const ch = await createChart(client.id, 'session');
+describe('カルテエディタ: 白紙（手書き・自由記述）ページ', () => {
+  test('ペン/消しゴム切替・色・太さ・undo/redo・背景選択・クリア・メモが一通り動く', async () => {
+    const ch = await createChart(client.id, 'karte');
     await nav(`#/client/${client.id}/chart/${ch.id}`);
-    gotoPageByName('セッションメモ（手書き）');
+    gotoPageByName('白紙（手書き・自由記述）');
     await flush();
 
     const canvas = appEl().querySelector('.pad-canvas');
@@ -239,7 +249,7 @@ describe('カルテエディタ: 手書きページ（canvas）', () => {
     firePointer(canvas, 'pointerup', { x: 60, y: 40, pointerId: 5 });
     await waitSaved();
     let saved = await getChart(ch.id);
-    let p = saved.pages.find((x) => x.name === 'セッションメモ（手書き）');
+    let p = saved.pages.find((x) => x.name === '白紙（手書き・自由記述）');
     assert.equal(p.strokes.length, 1);
     assert.equal(p.strokes[0].tool, 'pen');
 
@@ -248,7 +258,7 @@ describe('カルテエディタ: 手書きページ（canvas）', () => {
     firePointer(canvas, 'pointerup', { x: 5, y: 5, pointerId: 6 });
     await waitSaved();
     saved = await getChart(ch.id);
-    p = saved.pages.find((x) => x.name === 'セッションメモ（手書き）');
+    p = saved.pages.find((x) => x.name === '白紙（手書き・自由記述）');
     assert.equal(p.strokes[1].tool, 'eraser');
 
     fireClick(appEl().querySelector('.swatches .sw')); // 色を選ぶとpenツールに戻る
@@ -256,79 +266,43 @@ describe('カルテエディタ: 手書きページ（canvas）', () => {
     fireClick(byText(appEl(), 'button', '↶ 取消'));
     await waitSaved();
     saved = await getChart(ch.id);
-    p = saved.pages.find((x) => x.name === 'セッションメモ（手書き）');
+    p = saved.pages.find((x) => x.name === '白紙（手書き・自由記述）');
     assert.equal(p.strokes.length, 1);
 
     fireChange(appEl().querySelector('.bg-select'), 'body-front');
     await waitSaved();
     saved = await getChart(ch.id);
-    p = saved.pages.find((x) => x.name === 'セッションメモ（手書き）');
+    p = saved.pages.find((x) => x.name === '白紙（手書き・自由記述）');
     assert.equal(p.bg, 'body-front');
 
-    fireInput(appEl().querySelector('.page-content textarea'), 'フォームが安定してきた');
+    fireInput(appEl().querySelector('.page-content textarea'), '姿勢がやや前傾');
     clickByText(appEl(), 'button', 'クリア');
     clickByText(document.body, '.modal-foot button', 'OK');
     await waitSaved();
     saved = await getChart(ch.id);
-    p = saved.pages.find((x) => x.name === 'セッションメモ（手書き）');
+    p = saved.pages.find((x) => x.name === '白紙（手書き・自由記述）');
     assert.equal(p.strokes.length, 0);
-    assert.equal(p.values.note, 'フォームが安定してきた');
+    assert.equal(p.values.note, '姿勢がやや前傾');
   });
 });
 
-describe('カルテエディタ: note ページ', () => {
-  test('自由記入テキストが保存される', async () => {
-    const ch = await createChart(client.id, 'session');
+describe('カルテエディタ: note ページ（将来のテンプレ拡張向けの描画確認）', () => {
+  test('kind:note のページは自由記入テキストとして描画・保存される', async () => {
+    // 現行3テンプレに note ページは無いが、レンダラは汎用なので直接ページを足して検証する
+    const ch = await createChart(client.id, 'karte');
+    ch.pages.push({
+      id: 'note1', name: '振り返り', kind: 'note', skippable: true, skipped: false,
+      bg: null, placeholder: '振り返りを書いてください', fields: [], values: {}, text: '', strokes: [],
+    });
+    await saveChart(ch);
     await nav(`#/client/${client.id}/chart/${ch.id}`);
-    gotoPageByName('次回への申し送り・宿題');
+    gotoPageByName('振り返り');
     await flush();
 
     fireInput(appEl().querySelector('.note-area'), '次回は下半身メニュー中心に');
     await waitSaved();
     const saved = await getChart(ch.id);
-    const p = saved.pages.find((x) => x.name === '次回への申し送り・宿題');
+    const p = saved.pages.find((x) => x.name === '振り返り');
     assert.equal(p.text, '次回は下半身メニュー中心に');
-  });
-});
-
-describe('カルテエディタ: 白紙テンプレのページ追加/削除', () => {
-  test('ページを追加でき、種別・名前が反映される', async () => {
-    const ch = await createChart(client.id, 'blank');
-    await nav(`#/client/${client.id}/chart/${ch.id}`);
-    const before = appEl().querySelectorAll('.pchip').length;
-
-    clickByText(appEl(), 'button', '＋ ページを追加');
-    const nameInput = document.querySelector('.modal input[type=text]');
-    fireInput(nameInput, '姿勢写真');
-    const canvasRadio = [...document.querySelectorAll('.kind-pick input[type=radio]')][2];
-    canvasRadio.click();
-    clickByText(document.body, '.modal-foot button', '追加');
-    await flush();
-
-    assert.equal(appEl().querySelectorAll('.pchip').length, before + 1);
-    const saved = await getChart(ch.id);
-    const added = saved.pages[saved.pages.length - 1];
-    assert.equal(added.name, '姿勢写真');
-    assert.equal(added.kind, 'canvas');
-  });
-
-  test('複数ページあるときはページ削除ボタンが出て削除できる', async () => {
-    const ch = await createChart(client.id, 'blank');
-    ch.pages.push({ id: 'extra', name: '追加ページ', kind: 'note', skippable: true, skipped: false, bg: null, placeholder: '', fields: [], values: {}, text: '', strokes: [] });
-    await (await import('../js/store.js')).saveChart(ch);
-    await nav(`#/client/${client.id}/chart/${ch.id}`);
-    gotoPageByName('追加ページ');
-    await flush();
-
-    // 「削除」ボタンはクラム（カルテ全体削除）とページヘッダ（このページ削除）の
-    // 2箇所にあるため、ページヘッダ側に絞る
-    const pagesBefore = ch.pages.length; // 顧客データ + 白紙ページ + 追加ページ = 3
-    clickByText(appEl().querySelector('.page-head'), 'button', '削除');
-    clickByText(document.body, '.modal-foot button', 'OK');
-    await waitSaved(); // ページ削除もdebounce保存なので反映を待つ
-
-    const saved = await getChart(ch.id);
-    assert.equal(saved.pages.length, pagesBefore - 1);
-    assert.ok(!saved.pages.some((p) => p.name === '追加ページ'));
   });
 });

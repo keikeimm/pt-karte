@@ -1,5 +1,5 @@
 import { requestPersistentStorage } from './data/adapter.js';
-import { TEMPLATES, getTemplate, BLANK_PAGE_KINDS } from './templates.js';
+import { TEMPLATES, getTemplate } from './templates.js';
 import {
   newClient,
   listClients,
@@ -7,14 +7,16 @@ import {
   saveClient,
   deleteClient,
   listCharts,
+  listKartes,
   getChart,
   createChart,
   saveChart,
   deleteChart,
   findChartByRole,
+  todayISO,
 } from './store.js';
 import { HandwritingPad } from './handwriting.js';
-import { exportClient, exportAll, importFile } from './export.js';
+import { exportClientXlsx, exportAll, importFile } from './export.js';
 
 // ---------- DOM ヘルパー ----------
 function el(tag, props = {}, ...children) {
@@ -303,7 +305,8 @@ async function viewClientDetail(clientId) {
     location.hash = '#/';
     return;
   }
-  const charts = await listCharts(clientId);
+  const charts = await listCharts(clientId); // roleButton判定用（counseling/precautions含む）
+  const kartes = await listKartes(clientId); // カルテ一覧表示用（記入日の新しい順）
   const view = el('div', { class: 'view' });
 
   view.append(
@@ -334,26 +337,24 @@ async function viewClientDetail(clientId) {
     )
   );
 
-  // カルテ一覧（カウンセリングシート・注意書きは専用ボタンにあるのでここには出さない）
-  const generalCharts = charts.filter((ch) => !ch.role);
+  // カルテ一覧（記入日で管理。カウンセリングシート・注意書きは専用ボタン側にあるので出さない）
   const kSection = el('div', { class: 'section' },
     el('div', { class: 'section-head' },
       el('h3', {}, 'カルテ'),
-      el('button', { class: 'btn btn-primary', onclick: () => pickTemplate(c) }, '＋ 新規カルテ')
+      el('button', { class: 'btn btn-primary', onclick: () => createKarteAndOpen(c) }, '＋ 本日のカルテ')
     )
   );
-  if (!generalCharts.length) {
-    kSection.append(el('p', { class: 'muted' }, 'カルテはまだありません。種類を選んで作成できます。'));
+  if (!kartes.length) {
+    kSection.append(el('p', { class: 'muted' }, 'カルテはまだありません。'));
   }
   const kl = el('div', { class: 'card-list' });
-  for (const ch of generalCharts) {
-    const tpl = getTemplate(ch.templateId);
+  for (const ch of kartes) {
     kl.append(
       el('a', { class: 'chart-card', href: `#/client/${clientId}/chart/${ch.id}` },
-        el('div', { class: 'chart-icon' }, tpl?.icon || '📝'),
+        el('div', { class: 'chart-icon' }, '📝'),
         el('div', { class: 'chart-main' },
-          el('div', { class: 'chart-title' }, ch.title),
-          el('div', { class: 'muted' }, `${tpl?.name || ''}・${ch.pages.length}ページ・更新 ${fmtDate(ch.updatedAt)}`)
+          el('div', { class: 'chart-title' }, fmtDate(ch.date)),
+          el('div', { class: 'muted' }, `更新 ${fmtDate(ch.updatedAt)}`)
         )
       )
     );
@@ -363,12 +364,17 @@ async function viewClientDetail(clientId) {
 
   view.append(
     el('div', { class: 'section' },
-      el('button', { class: 'btn btn-ghost', onclick: async () => { const n = await exportClient(c); toast('書き出し: ' + n); } },
-        'このクライアントを書き出す（JSON）')
+      el('button', { class: 'btn btn-ghost', onclick: async () => { const n = await exportClientXlsx(c); toast('書き出し: ' + n); } },
+        'このクライアントを書き出す（Excel）')
     )
   );
 
   app().replaceChildren(view);
+}
+
+async function createKarteAndOpen(client) {
+  const ch = await createChart(client.id, 'karte');
+  location.hash = `#/client/${client.id}/chart/${ch.id}`;
 }
 
 function clientCard(c) {
@@ -446,41 +452,6 @@ function roleButton(client, charts, role, label) {
   }, label, el('span', { class: 'tile-sub' }, existing ? '開く' : '新規作成'));
 }
 
-function pickTemplate(client) {
-  const grid = el('div', { class: 'tpl-grid' });
-  let chosen = null;
-  // カウンセリングシート・注意書きは専用ボタンから作る（ここでの二重作成を防ぐ）
-  const cards = TEMPLATES.filter((t) => !t.role).map((t) => {
-    const card = el('button', { class: 'tpl-card', onclick: () => {
-      chosen = t.id;
-      for (const x of cards) x.classList.toggle('sel', x === card);
-    } },
-      el('div', { class: 'tpl-icon' }, t.icon),
-      el('div', { class: 'tpl-name' }, t.name),
-      el('div', { class: 'muted tpl-desc' }, t.description)
-    );
-    return card;
-  });
-  grid.append(...cards);
-  modal({
-    title: 'カルテの種類を選択',
-    body: grid,
-    actions: [
-      { label: 'キャンセル' },
-      {
-        label: '作成',
-        primary: true,
-        onClick: async (close) => {
-          if (!chosen) { toast('種類を選んでください'); return; }
-          const ch = await createChart(client.id, chosen);
-          close();
-          location.hash = `#/client/${client.id}/chart/${ch.id}`;
-        },
-      },
-    ],
-  });
-}
-
 // ---------- ビュー: カルテエディタ ----------
 let padInstances = [];
 function clearPads() {
@@ -515,9 +486,9 @@ async function viewChartEditor(clientId, chartId) {
       el('a', { href: '#/client/' + clientId }, '← ' + (c.name || 'ファイル')),
       el('div', { class: 'spacer' }),
       savedTag,
-      el('button', { class: 'btn btn-ghost', onclick: () => renameChart(chart, () => rerender()) }, '名称変更'),
       el('button', { class: 'btn btn-ghost btn-danger', onclick: async () => {
-        if (await confirmDialog(`カルテ「${chart.title}」を削除します。`, { danger: true })) {
+        const label = chart.role ? chart.title : `記入日 ${fmtDate(chart.date)} のカルテ`;
+        if (await confirmDialog(`${label}を削除します。`, { danger: true })) {
           await deleteChart(chart);
           location.hash = '#/client/' + clientId;
         }
@@ -525,15 +496,24 @@ async function viewChartEditor(clientId, chartId) {
     )
   );
 
+  // role（counseling/precautions）はテンプレ名固定。カルテは記入日で管理し、その場で変更可能
   view.append(el('div', { class: 'editor-title' },
     el('span', { class: 'chart-icon' }, tpl?.icon || '📝'),
-    el('span', {}, chart.title)
+    chart.role
+      ? el('span', {}, chart.title)
+      : el('label', { class: 'date-edit' },
+          el('span', {}, 'カルテ：'),
+          el('input', {
+            type: 'date', value: chart.date || todayISO(),
+            onchange: (e) => { chart.date = e.target.value; touch(); },
+          })
+        )
   ));
 
   // 顧客サマリー（頭に顧客データ）
   view.append(clientStrip(c));
 
-  // ページナビ
+  // ページナビ（タブ）
   const nav = el('div', { class: 'page-nav', id: 'pageNav' });
   view.append(nav);
 
@@ -547,19 +527,10 @@ async function viewChartEditor(clientId, chartId) {
     el('button', { class: 'btn btn-ghost', onclick: () => go(1) }, '次のページ →')
   ));
 
-  if (chart.templateId === 'blank') {
-    view.append(el('div', { class: 'section' },
-      el('button', { class: 'btn btn-ghost', onclick: () => addBlankPage(chart, () => rerender()) }, '＋ ページを追加')
-    ));
-  }
-
   app().replaceChildren(view);
   drawNav();
   drawPage();
 
-  function rerender() {
-    viewChartEditor(clientId, chartId);
-  }
   function setSaving() {
     const t = document.getElementById('savedTag');
     if (t) { t.textContent = '保存中…'; t.classList.add('dirty'); }
@@ -604,7 +575,7 @@ async function viewChartEditor(clientId, chartId) {
     const p = chart.pages[pageIdx];
     bodyWrap.replaceChildren();
 
-    // ページヘッダ（種別・スキップ・リネーム）
+    // ページヘッダ（種別・スキップ）
     const head = el('div', { class: 'page-head' },
       el('div', { class: 'page-h-title' }, p.name),
       el('label', { class: 'skip-toggle' + (p.skippable ? '' : ' disabled') },
@@ -616,21 +587,6 @@ async function viewChartEditor(clientId, chartId) {
         el('span', {}, 'このページを飛ばす')
       )
     );
-    if (chart.templateId === 'blank') {
-      head.append(el('button', { class: 'btn btn-ghost btn-sm', onclick: () => {
-        const name = prompt('ページ名', p.name);
-        if (name) { p.name = name.trim(); touch(); drawNav(); drawPage(); }
-      } }, '名称'));
-      if (chart.pages.length > 1) {
-        head.append(el('button', { class: 'btn btn-ghost btn-sm btn-danger', onclick: async () => {
-          if (await confirmDialog('このページを削除します。')) {
-            chart.pages.splice(pageIdx, 1);
-            selectPage(Math.max(0, pageIdx - 1));
-            touch();
-          }
-        } }, '削除'));
-      }
-    }
     bodyWrap.append(head);
 
     const container = el('div', { class: 'page-content ' + p.kind });
@@ -658,55 +614,6 @@ function clientStrip(c) {
 
 function kindIcon(k) {
   return k === 'canvas' ? '✎' : k === 'note' ? '⌨' : '☑';
-}
-
-function renameChart(chart, done) {
-  const input = el('input', { type: 'text', value: chart.title, class: 'wide' });
-  modal({
-    title: 'カルテ名の変更',
-    body: el('label', { class: 'field' }, el('span', {}, 'カルテ名'), input),
-    actions: [
-      { label: 'キャンセル' },
-      { label: '保存', primary: true, onClick: async (close) => {
-        chart.title = input.value.trim() || chart.title;
-        await saveChart(chart);
-        close();
-        done();
-      } },
-    ],
-  });
-}
-
-function addBlankPage(chart, done) {
-  let kind = 'note';
-  const sel = el('div', { class: 'kind-pick' },
-    BLANK_PAGE_KINDS.map((k) =>
-      el('label', { class: 'radio' },
-        el('input', { type: 'radio', name: 'nk', ...(k.kind === kind ? { checked: true } : {}), onchange: () => (kind = k.kind) }),
-        el('span', {}, k.label)
-      )
-    )
-  );
-  const nameInput = el('input', { type: 'text', value: 'ページ' + (chart.pages.length + 1) });
-  modal({
-    title: 'ページを追加',
-    body: el('div', { class: 'stack' }, el('label', { class: 'field' }, el('span', {}, 'ページ名'), nameInput), sel),
-    actions: [
-      { label: 'キャンセル' },
-      { label: '追加', primary: true, onClick: async (close) => {
-        chart.pages.push({
-          id: 'p' + Date.now().toString(36),
-          name: nameInput.value.trim() || 'ページ',
-          kind, skippable: true, skipped: false, bg: null,
-          placeholder: '', fields: kind === 'canvas' ? [{ type: 'textarea', key: 'note', label: 'メモ', rows: 3 }] : [],
-          values: {}, text: '', strokes: [],
-        });
-        await saveChart(chart);
-        close();
-        done();
-      } },
-    ],
-  });
 }
 
 function clampPage(chart, i) {

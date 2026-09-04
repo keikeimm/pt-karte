@@ -1,8 +1,10 @@
 // カルテテンプレート定義と、手書きページの背景（人体図）。
+// カルテの種類は1種類（karte）＋カウンセリングシート／注意書き（役割固定）のみ。
+// karte の各ページが「既存のタブ」＝各項目 + 白紙の手書き欄になる。
 //
 // pageDef = { name, kind:'form'|'note'|'canvas', skippable, bg, fields:[fieldDef] }
 // fieldDef.type = 'heading'|'text'|'textarea'|'number'|'date'|'select'
-//               |'checkbox'|'checklist'|'yesno'|'table'|'static'|'sign'
+//               |'checkbox'|'yesno'|'table'|'static'|'sign'
 
 // ---- 人体図 / 姿勢図（canvas 背景に敷く SVG） ----
 const BODY_FRONT = `
@@ -62,7 +64,7 @@ export const BODY_CHARTS = {
   'posture-front': POSTURE_FRONT,
 };
 
-// ---- 顧客データ差し込みページ（全テンプレの先頭に自動付与） ----
+// ---- 顧客データ差し込みページ（先頭に自動付与） ----
 const CLIENT_HEADER_PAGE = {
   name: '顧客データ',
   kind: 'form',
@@ -84,39 +86,7 @@ const parqQuestions = [
   '運動をしない方がよい理由が他にありますか',
 ];
 
-const fmsItems = [
-  'ディープスクワット',
-  'ハードルステップ',
-  'インラインランジ',
-  '肩の可動域',
-  '能動的下肢挙上（ASLR）',
-  '体幹安定プッシュアップ',
-  '回旋安定性',
-];
-
-function romTable() {
-  return {
-    type: 'table',
-    key: 'rom',
-    label: '関節可動域（度・所見）',
-    columns: [
-      { key: 'joint', label: '関節・動作', type: 'text' },
-      { key: 'left', label: '左', type: 'text' },
-      { key: 'right', label: '右', type: 'text' },
-      { key: 'note', label: '所見', type: 'text' },
-    ],
-    rows: [
-      { joint: '肩関節 屈曲' },
-      { joint: '肩関節 外旋' },
-      { joint: '股関節 屈曲' },
-      { joint: '股関節 伸展（トーマステスト）' },
-      { joint: '足関節 背屈' },
-      { joint: '胸椎 回旋' },
-    ],
-  };
-}
-
-// ---- テンプレート本体 ----
+// ---- テンプレート本体（3種類のみ） ----
 export const TEMPLATES = [
   {
     id: 'counseling',
@@ -124,7 +94,7 @@ export const TEMPLATES = [
     short: 'カウンセリング',
     icon: '📋',
     role: 'counseling',
-    description: '目標・生活習慣・食事・運動歴・医学スクリーニング・同意',
+    description: '目標・生活習慣・食事・運動歴・医学スクリーニング',
     pages: [
       {
         name: '目標・要望',
@@ -195,237 +165,6 @@ export const TEMPLATES = [
           { type: 'textarea', key: 'painNote', label: '痛み・違和感・可動制限のメモ', rows: 3 },
         ],
       },
-      // 同意・署名は「注意事項・免責同意書」チャートに一本化したのでここでは持たない
-    ],
-  },
-
-  {
-    id: 'assessment',
-    name: '姿勢・動作評価シート',
-    short: '姿勢評価',
-    icon: '🧍',
-    description: '静的姿勢・関節可動域・動作スクリーニング・所見',
-    pages: [
-      {
-        name: '静的姿勢（矢状面）',
-        kind: 'canvas',
-        bg: 'posture-side',
-        fields: [
-          { type: 'select', key: 'headPos', label: '頭位', options: ['正常', '前方頭位'] },
-          { type: 'select', key: 'shoulder', label: '肩', options: ['正常', '前方（巻き肩）'] },
-          { type: 'select', key: 'pelvis', label: '骨盤', options: ['中間位', '前傾', '後傾'] },
-          { type: 'select', key: 'knee', label: '膝', options: ['正常', '過伸展', '軽度屈曲'] },
-        ],
-      },
-      {
-        name: '静的姿勢（前額面）',
-        kind: 'canvas',
-        bg: 'posture-front',
-        fields: [
-          { type: 'text', key: 'shoulderLevel', label: '肩の高さの左右差' },
-          { type: 'text', key: 'pelvisLevel', label: '骨盤の高さの左右差' },
-          { type: 'select', key: 'footArch', label: '足部アーチ', options: ['正常', '扁平', 'ハイアーチ'] },
-        ],
-      },
-      {
-        name: '関節可動域（ROM）',
-        kind: 'form',
-        fields: [romTable()],
-      },
-      {
-        name: '機能的動作スクリーニング',
-        kind: 'form',
-        fields: [
-          { type: 'heading', label: '各項目 3=良好 / 2=代償あり / 1=不可 / 0=痛み' },
-          {
-            type: 'table',
-            key: 'fms',
-            label: '動作スクリーニング',
-            columns: [
-              { key: 'item', label: '項目', type: 'text' },
-              { key: 'score', label: 'スコア', type: 'select', options: ['3', '2', '1', '0'] },
-              { key: 'note', label: 'メモ', type: 'text' },
-            ],
-            rows: fmsItems.map((item) => ({ item })),
-          },
-        ],
-      },
-      {
-        name: '総合所見・方針',
-        kind: 'note',
-        placeholder: '評価のまとめ、優先的に改善する点、初期プログラムの方針など',
-      },
-    ],
-  },
-
-  {
-    id: 'session',
-    name: 'トレーニングセッション記録',
-    short: 'セッション',
-    icon: '🏋️',
-    description: '当日のコンディション・メニュー・有酸素・申し送り',
-    pages: [
-      {
-        name: 'セッション情報',
-        kind: 'form',
-        skippable: false,
-        fields: [
-          { type: 'date', key: 'date', label: '実施日' },
-          { type: 'number', key: 'sessionNo', label: '通算回数' },
-          { type: 'select', key: 'condition', label: '体調', options: ['良い', '普通', '不調'] },
-          { type: 'number', key: 'sleepHours', label: '前夜の睡眠（h）' },
-          { type: 'select', key: 'soreness', label: '筋肉痛', options: ['なし', '軽度', '中等度', '強い'] },
-          { type: 'textarea', key: 'homeworkCheck', label: '前回の宿題の実施状況', rows: 2 },
-        ],
-      },
-      {
-        name: 'メニュー記録',
-        kind: 'form',
-        skippable: false,
-        fields: [
-          {
-            type: 'table',
-            key: 'menu',
-            label: '実施種目',
-            columns: [
-              { key: 'ex', label: '種目', type: 'text' },
-              { key: 'weight', label: '重量', type: 'text' },
-              { key: 'reps', label: '回数', type: 'text' },
-              { key: 'sets', label: 'セット', type: 'text' },
-              { key: 'rpe', label: 'RPE', type: 'text' },
-              { key: 'note', label: 'メモ', type: 'text' },
-            ],
-            rows: Array.from({ length: 6 }, () => ({})),
-          },
-        ],
-      },
-      {
-        name: '有酸素・コンディショニング',
-        kind: 'form',
-        fields: [
-          { type: 'text', key: 'cardioType', label: '種目（バイク・トレッドミル 等）' },
-          { type: 'text', key: 'cardioTime', label: '時間・距離' },
-          { type: 'text', key: 'cardioIntensity', label: '強度（心拍・主観）' },
-          { type: 'textarea', key: 'mobility', label: 'ストレッチ・モビリティ', rows: 2 },
-        ],
-      },
-      {
-        name: 'セッションメモ（手書き）',
-        kind: 'canvas',
-        fields: [
-          { type: 'textarea', key: 'note', label: 'フォームの気づき・キューイング', rows: 3 },
-        ],
-      },
-      {
-        name: '次回への申し送り・宿題',
-        kind: 'note',
-        placeholder: '次回の重点、宿題（自宅トレ・歩数・食事）、注意点',
-      },
-    ],
-  },
-
-  {
-    id: 'body-composition',
-    name: '体組成・身体測定記録',
-    short: '体組成',
-    icon: '📏',
-    description: '体重・体脂肪率・周径囲・写真メモ',
-    pages: [
-      {
-        name: '測定値',
-        kind: 'form',
-        skippable: false,
-        fields: [
-          { type: 'date', key: 'date', label: '測定日' },
-          { type: 'number', key: 'weight', label: '体重（kg）' },
-          { type: 'number', key: 'bodyFat', label: '体脂肪率（%）' },
-          { type: 'number', key: 'muscle', label: '筋肉量（kg）' },
-          { type: 'number', key: 'bmi', label: 'BMI' },
-          { type: 'number', key: 'bmr', label: '基礎代謝（kcal）' },
-          { type: 'text', key: 'device', label: '測定機器・条件' },
-        ],
-      },
-      {
-        name: '周径囲',
-        kind: 'form',
-        fields: [
-          {
-            type: 'table',
-            key: 'girth',
-            label: '周径囲（cm）',
-            columns: [
-              { key: 'part', label: '部位', type: 'text' },
-              { key: 'value', label: '数値', type: 'text' },
-              { key: 'note', label: 'メモ', type: 'text' },
-            ],
-            rows: [
-              { part: '胸囲' },
-              { part: 'ウエスト（最小）' },
-              { part: 'へそ周り' },
-              { part: 'ヒップ' },
-              { part: '上腕（右）' },
-              { part: '上腕（左）' },
-              { part: '大腿（右）' },
-              { part: '大腿（左）' },
-              { part: 'ふくらはぎ（右）' },
-              { part: 'ふくらはぎ（左）' },
-            ],
-          },
-        ],
-      },
-      {
-        name: '写真メモ・所見',
-        kind: 'canvas',
-        bg: 'body-front',
-        fields: [
-          { type: 'textarea', key: 'note', label: '変化・所見・目標との差', rows: 3 },
-        ],
-      },
-    ],
-  },
-
-  {
-    id: 'nutrition',
-    name: '食事・栄養カウンセリング記録',
-    short: '栄養',
-    icon: '🍱',
-    description: '目標PFC・食事記録・振り返り',
-    pages: [
-      {
-        name: '目標設定',
-        kind: 'form',
-        fields: [
-          { type: 'number', key: 'kcal', label: '目標カロリー（kcal）' },
-          { type: 'text', key: 'protein', label: 'たんぱく質（g）' },
-          { type: 'text', key: 'fat', label: '脂質（g）' },
-          { type: 'text', key: 'carb', label: '炭水化物（g）' },
-          { type: 'text', key: 'water', label: '水分（L）' },
-          { type: 'textarea', key: 'rule', label: 'ルール・約束事', rows: 2 },
-        ],
-      },
-      {
-        name: '食事記録',
-        kind: 'form',
-        fields: [
-          {
-            type: 'table',
-            key: 'log',
-            label: '食事内容',
-            columns: [
-              { key: 'time', label: '時間', type: 'text' },
-              { key: 'menu', label: '内容', type: 'text' },
-              { key: 'amount', label: '量', type: 'text' },
-              { key: 'note', label: 'メモ', type: 'text' },
-            ],
-            rows: Array.from({ length: 6 }, () => ({})),
-          },
-        ],
-      },
-      {
-        name: '振り返り・アドバイス',
-        kind: 'note',
-        placeholder: 'できていること、改善点、次回までの具体的な提案',
-      },
     ],
   },
 
@@ -488,12 +227,50 @@ export const TEMPLATES = [
   },
 
   {
-    id: 'blank',
-    name: '白紙カルテ',
-    short: '白紙',
+    id: 'karte',
+    name: 'カルテ',
+    short: 'カルテ',
     icon: '📝',
-    description: 'ページを自由に追加。種別（フォーム/入力/手書き）を選択',
-    pages: [{ name: 'ページ1', kind: 'note', placeholder: '自由記入' }],
+    description: '記入日で管理。各項目（コンディション・メニュー/測定）＋白紙の手書き欄をタブで切替',
+    pages: [
+      {
+        name: '本日の記録',
+        kind: 'form',
+        skippable: false,
+        fields: [
+          { type: 'select', key: 'condition', label: '体調', options: ['良い', '普通', '不調'] },
+          { type: 'number', key: 'sleepHours', label: '睡眠時間（h）' },
+          { type: 'number', key: 'weight', label: '体重（kg）' },
+          { type: 'number', key: 'bodyFat', label: '体脂肪率（%）' },
+          { type: 'textarea', key: 'memo', label: 'メモ', rows: 3 },
+        ],
+      },
+      {
+        name: 'メニュー・測定記録',
+        kind: 'form',
+        fields: [
+          {
+            type: 'table',
+            key: 'items',
+            label: '種目・測定項目',
+            columns: [
+              { key: 'name', label: '種目・項目', type: 'text' },
+              { key: 'value', label: '重量・数値', type: 'text' },
+              { key: 'reps', label: '回数・セット', type: 'text' },
+              { key: 'note', label: 'メモ', type: 'text' },
+            ],
+            rows: Array.from({ length: 6 }, () => ({})),
+          },
+        ],
+      },
+      {
+        name: '白紙（手書き・自由記述）',
+        kind: 'canvas',
+        fields: [
+          { type: 'textarea', key: 'note', label: '自由記述', rows: 3 },
+        ],
+      },
+    ],
   },
 ];
 
@@ -519,9 +296,3 @@ export function instantiatePages(template) {
     strokes: [],
   }));
 }
-
-export const BLANK_PAGE_KINDS = [
-  { kind: 'form', label: 'フォーム（項目入力）' },
-  { kind: 'note', label: '入力（自由テキスト）' },
-  { kind: 'canvas', label: '手書き' },
-];

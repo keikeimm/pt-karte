@@ -4,6 +4,13 @@
 // jsdom が持たない/未実装のAPI（ResizeObserver・canvas 2D・URL.createObjectURL・
 // pointer capture）だけ最小限のフェイクで補う。
 import { JSDOM } from 'jsdom';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const XLSX_VENDOR_PATH = path.join(__dirname, '../../js/vendor/xlsx.core.min.js');
 
 const GLOBAL_KEYS = [
   'window', 'document', 'navigator', 'location', 'history',
@@ -17,6 +24,7 @@ export function installDom({ url = 'http://localhost/pt-karte/' } = {}) {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {
     url,
     pretendToBeVisual: true, // requestAnimationFrame / getComputedStyle を有効化
+    runScripts: 'outside-only', // installXlsx() が vm 経由でwindowにスクリプトを流すために必要
   });
   const { window } = dom;
 
@@ -56,6 +64,20 @@ export function installDom({ url = 'http://localhost/pt-karte/' } = {}) {
   globalThis.window = window;
 
   return dom;
+}
+
+// index.html が <script src="js/vendor/xlsx.core.min.js"> で行っているのと同じことを
+// テスト環境でも行い、実物のSheetJSでExcel書き出しを検証できるようにする。
+export function installXlsx(dom) {
+  const src = fs.readFileSync(XLSX_VENDOR_PATH, 'utf8');
+  vm.runInContext(src, dom.getInternalVMContext());
+  Object.defineProperty(globalThis, 'XLSX', {
+    value: dom.window.XLSX,
+    configurable: true,
+    writable: true,
+    enumerable: true,
+  });
+  return dom.window.XLSX;
 }
 
 export function makeFakeCanvasContext() {

@@ -1,6 +1,6 @@
 // PT カルテ Service Worker — app shell を precache してオフライン動作させる。
 // 資材を更新したら CACHE_VERSION を上げること。
-const CACHE_VERSION = 'pt-karte-v2';
+const CACHE_VERSION = 'pt-karte-v3';
 
 const ASSETS = [
   './',
@@ -14,6 +14,7 @@ const ASSETS = [
   './js/templates.js',
   './js/handwriting.js',
   './js/export.js',
+  './js/vendor/xlsx.core.min.js',
   './icons/favicon.ico',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
