@@ -451,6 +451,7 @@ export const TEMPLATES = [
     short: '注意書き',
     icon: '⚠️',
     role: 'precautions',
+    skipHeaderPage: true, // 顧客データはクライアント詳細の上部カードに既出のため省略
     description: '運動参加の注意事項・免責・緊急連絡先',
     pages: [
       {
@@ -516,9 +517,10 @@ export function getTemplate(id) {
   return TEMPLATES.find((t) => t.id === id) || null;
 }
 
-// テンプレートから実カルテの pages 配列を生成（先頭に顧客データページを付与）
+// テンプレートから実カルテの pages 配列を生成（先頭に顧客データページを付与。
+// skipHeaderPage を持つテンプレートは、既に別画面に顧客データがあるため省略）
 export function instantiatePages(template) {
-  const src = [CLIENT_HEADER_PAGE, ...template.pages];
+  const src = template.skipHeaderPage ? [...template.pages] : [CLIENT_HEADER_PAGE, ...template.pages];
   return src.map((p, idx) => ({
     id: 'p' + idx + '-' + Math.random().toString(36).slice(2, 7),
     name: p.name,

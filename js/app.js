@@ -302,18 +302,19 @@ async function viewClientDetail(clientId) {
     )
   );
 
-  // カルテ一覧
+  // カルテ一覧（カウンセリングシート・注意書きは専用ボタンにあるのでここには出さない）
+  const generalCharts = charts.filter((ch) => !ch.role);
   const kSection = el('div', { class: 'section' },
     el('div', { class: 'section-head' },
       el('h3', {}, 'カルテ'),
       el('button', { class: 'btn btn-primary', onclick: () => pickTemplate(c) }, '＋ 新規カルテ')
     )
   );
-  if (!charts.length) {
+  if (!generalCharts.length) {
     kSection.append(el('p', { class: 'muted' }, 'カルテはまだありません。種類を選んで作成できます。'));
   }
   const kl = el('div', { class: 'card-list' });
-  for (const ch of charts) {
+  for (const ch of generalCharts) {
     const tpl = getTemplate(ch.templateId);
     kl.append(
       el('a', { class: 'chart-card', href: `#/client/${clientId}/chart/${ch.id}` },
@@ -411,7 +412,8 @@ function roleButton(client, charts, role, label) {
 function pickTemplate(client) {
   const grid = el('div', { class: 'tpl-grid' });
   let chosen = null;
-  const cards = TEMPLATES.map((t) => {
+  // カウンセリングシート・注意書きは専用ボタンから作る（ここでの二重作成を防ぐ）
+  const cards = TEMPLATES.filter((t) => !t.role).map((t) => {
     const card = el('button', { class: 'tpl-card', onclick: () => {
       chosen = t.id;
       for (const x of cards) x.classList.toggle('sel', x === card);
