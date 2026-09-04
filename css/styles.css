@@ -150,6 +150,7 @@ body {
 }
 .field textarea, .modal textarea { resize: vertical; }
 .field-inline input[type="checkbox"] { width: 20px; height: 20px; }
+.req-mark { color: var(--danger); font-weight: 700; }
 .field-heading { grid-column: 1 / -1; margin: 10px 0 2px; font-size: 14px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 4px; }
 .static-text { grid-column: 1 / -1; white-space: pre-wrap; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 12px; font-size: 13px; color: var(--text); }
 .radio { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: 14px; }

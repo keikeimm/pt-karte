@@ -187,8 +187,9 @@ async function addClient() {
         primary: true,
         onClick: async (close) => {
           form.apply();
-          if (!c.name.trim()) {
-            toast('氏名を入力してください');
+          const missing = form.missing();
+          if (missing.length) {
+            toast('未入力の必須項目があります: ' + missing.join('、'));
             return;
           }
           await saveClient(c);
@@ -231,22 +232,50 @@ function backupMenu() {
 }
 
 // ---------- クライアント編集フォーム ----------
+// 氏名〜利用開始日は入力必須
+const CLIENT_REQUIRED_KEYS = ['name', 'kana', 'birthday', 'sex', 'phone', 'email', 'startDate'];
+
 function clientForm(c) {
-  const f = (key, label, type = 'text', rows) => {
+  const entries = [];
+  const f = (key, label, kind = 'text', opts = {}) => {
     const id = 'cf_' + key;
-    const input =
-      type === 'textarea'
-        ? el('textarea', { id, rows: rows || 2 })
-        : el('input', { id, type });
-    input.value = c[key] || '';
-    return { key, wrap: el('label', { class: 'field' }, el('span', {}, label), input), input };
+    const required = CLIENT_REQUIRED_KEYS.includes(key);
+    let input;
+    if (kind === 'textarea') {
+      input = el('textarea', { id, rows: opts.rows || 2 });
+      input.value = c[key] || '';
+    } else if (kind === 'select') {
+      input = el('select', { id });
+      input.append(el('option', { value: '' }, '選択してください'));
+      for (const o of opts.options) {
+        input.append(el('option', { value: o, ...(c[key] === o ? { selected: true } : {}) }, o));
+      }
+    } else {
+      input = el('input', { id, type: kind === 'text' && key === 'phone' ? 'tel' : kind });
+      input.value = c[key] || '';
+      if (key === 'phone') {
+        input.setAttribute('inputmode', 'numeric');
+        input.setAttribute('placeholder', '09012345678');
+        // 数字以外は入力させない（全角数字は半角に正規化してから除去）
+        input.addEventListener('input', () => {
+          const half = input.value.replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0));
+          const digits = half.replace(/\D/g, '');
+          if (digits !== input.value) input.value = digits;
+        });
+      }
+    }
+    entries.push({ key, label, required, input });
+    return el('label', { class: 'field' + (required ? ' field-required' : '') },
+      el('span', {}, label, required ? el('span', { class: 'req-mark' }, ' *') : null),
+      input
+    );
   };
-  const fields = [
+  const wraps = [
     f('name', '氏名'),
     f('kana', 'フリガナ'),
     f('birthday', '生年月日', 'date'),
-    f('sex', '性別'),
-    f('phone', '電話'),
+    f('sex', '性別', 'select', { options: ['男', '女', 'その他'] }),
+    f('phone', '電話', 'text'),
     f('email', 'メール'),
     f('startDate', '利用開始日', 'date'),
     f('goal', '目標', 'text'),
@@ -255,11 +284,14 @@ function clientForm(c) {
     f('medicalNotes', '持病・服薬・アレルギー', 'textarea'),
     f('memo', '備考', 'textarea'),
   ];
-  const node = el('div', { class: 'form-grid' }, fields.map((x) => x.wrap));
+  const node = el('div', { class: 'form-grid' }, wraps);
   return {
     node,
     apply() {
-      for (const x of fields) c[x.key] = x.input.value.trim();
+      for (const e of entries) c[e.key] = (e.input.value || '').trim();
+    },
+    missing() {
+      return entries.filter((e) => e.required && !e.input.value.trim()).map((e) => e.label);
     },
   };
 }
@@ -385,6 +417,11 @@ function editClient(c) {
         primary: true,
         onClick: async (close) => {
           form.apply();
+          const missing = form.missing();
+          if (missing.length) {
+            toast('未入力の必須項目があります: ' + missing.join('、'));
+            return;
+          }
           await saveClient(c);
           close();
           render();
