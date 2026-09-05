@@ -131,7 +131,7 @@ describe('export.js: Excel書き出し（基本情報/カウンセリングシ�
     const c = newClient({ name: '入力太郎' });
     await saveClient(c);
     const ch = await createChart(c.id, 'counseling');
-    const goalPage = ch.pages.find((p) => p.name === '目標・要望');
+    const goalPage = ch.pages.find((p) => p.name === '目標・運動歴');
     goalPage.values.mainGoal = 'スクワット100kg';
     await (await import('../js/store.js')).saveChart(ch);
 

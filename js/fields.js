@@ -1,7 +1,7 @@
 // テンプレートのページ/フィールドをDOMへ描画する。カルテエディタ（app.js）から
 // ページ種別ごとに呼ばれる。手書きパッドは呼び出し側（app.js）がライフサイクル
 // （ページ切替時の破棄）を管理できるよう、生成のたびに registerPad(pad) で通知する。
-import { el, confirmDialog, calcAge } from './ui.js';
+import { el, confirmDialog } from './ui.js';
 import { HandwritingPad } from './handwriting.js';
 
 export function kindIcon(k) {
@@ -75,25 +75,24 @@ export function renderCanvasPage(p, container, markDirty, registerPad) {
   // メモ欄（打ち込み併用）
   for (const f of p.fields || []) {
     if (f.type === 'textarea' || f.type === 'text') {
-      container.append(renderField(f, p.values, markDirty, null, registerPad));
+      container.append(renderField(f, p.values, markDirty, registerPad));
     }
   }
 }
 
 // ---------- ページ描画: form ----------
-export function renderFormPage(p, container, markDirty, client, registerPad) {
+export function renderFormPage(p, container, markDirty, registerPad) {
   const grid = el('div', { class: 'field-grid' });
   for (const f of p.fields || []) {
-    grid.append(renderField(f, p.values, markDirty, client, registerPad));
+    grid.append(renderField(f, p.values, markDirty, registerPad));
   }
   container.append(grid);
 }
 
-export function renderField(f, values, markDirty, client, registerPad) {
+export function renderField(f, values, markDirty, registerPad) {
   if (f.type === 'heading') return el('h4', { class: 'field-heading' }, f.label);
 
   if (f.type === 'static') {
-    if (f.key === '_clientSummary') return client ? clientSummaryBlock(client) : el('div');
     return el('div', { class: 'static-text' }, f.text || '');
   }
 
@@ -145,24 +144,6 @@ export function renderField(f, values, markDirty, client, registerPad) {
   }
   wrap.append(input);
   return wrap;
-}
-
-export function clientSummaryBlock(c) {
-  const row = (k, v) => v ? el('tr', {}, el('th', {}, k), el('td', {}, v)) : null;
-  const emergency = [c.emergencyName, c.emergencyRelation && `（${c.emergencyRelation}）`, c.emergencyPhone].filter(Boolean).join(' ');
-  return el('table', { class: 'client-summary' },
-    row('会員ID', c.memberId),
-    row('氏名', c.name),
-    row('フリガナ', c.kana),
-    row('生年月日', c.birthday + (calcAge(c.birthday) !== '' ? `（${calcAge(c.birthday)}歳）` : '')),
-    row('性別', c.sex),
-    row('電話', c.phone),
-    row('目標', c.goal),
-    row('ケガ・既往', c.injuryHistory),
-    row('持病・服薬・アレルギー', c.medicalNotes),
-    row('緊急連絡先', emergency),
-    row('かかりつけ医', c.doctor)
-  );
 }
 
 function renderTable(f, values, markDirty) {

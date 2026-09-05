@@ -64,18 +64,6 @@ export const BODY_CHARTS = {
   'posture-front': POSTURE_FRONT,
 };
 
-// ---- 顧客データ差し込みページ（先頭に自動付与） ----
-const CLIENT_HEADER_PAGE = {
-  name: '顧客データ',
-  kind: 'form',
-  skippable: false,
-  fields: [
-    { type: 'static', key: '_clientSummary' }, // app.js が顧客情報を描画
-    { type: 'heading', label: 'このカルテのメモ' },
-    { type: 'textarea', key: 'headerMemo', label: '担当者メモ', rows: 3 },
-  ],
-};
-
 const parqQuestions = [
   '医師から心臓病があると言われ、医師の勧める範囲でのみ運動するように言われたことがありますか',
   '運動をすると胸に痛みを感じることがありますか',
@@ -97,48 +85,27 @@ export const TEMPLATES = [
     description: '目標・生活習慣・食事・運動歴・医学スクリーニング',
     pages: [
       {
-        name: '目標・要望',
+        name: '目標・運動歴',
         kind: 'form',
         fields: [
           { type: 'textarea', key: 'mainGoal', label: '主な目標', rows: 2 },
-          { type: 'text', key: 'deadline', label: '目標時期・イベント' },
-          { type: 'textarea', key: 'idealBody', label: 'なりたい姿・優先順位', rows: 2 },
           { type: 'textarea', key: 'concerns', label: '不安・過去に続かなかった理由', rows: 2 },
+          { type: 'text', key: 'currentExercise', label: '現在の運動習慣' },
+          { type: 'textarea', key: 'sportHistory', label: 'これまでの運動・競技歴', rows: 2 },
         ],
       },
       {
-        name: '生活習慣',
+        name: '生活・食習慣',
         kind: 'form',
         fields: [
-          { type: 'text', key: 'job', label: '職業・勤務形態' },
-          { type: 'text', key: 'wake', label: '起床 / 就寝' },
           { type: 'number', key: 'sleepHours', label: '睡眠時間（h）' },
           { type: 'select', key: 'smoke', label: '喫煙', options: ['なし', '過去', 'あり'] },
           { type: 'text', key: 'alcohol', label: '飲酒（頻度・量）' },
-          { type: 'select', key: 'stress', label: 'ストレスレベル', options: ['低', '中', '高'] },
           { type: 'select', key: 'activity', label: '日常の活動量', options: ['座位中心', '普通', '活動的'] },
-        ],
-      },
-      {
-        name: '食事習慣',
-        kind: 'form',
-        fields: [
           { type: 'number', key: 'meals', label: '1日の食事回数' },
-          { type: 'text', key: 'eatOut', label: '外食・中食の頻度' },
-          { type: 'select', key: 'cook', label: '自炊', options: ['ほぼ毎日', '週数回', 'ほぼしない'] },
           { type: 'text', key: 'snack', label: '間食・嗜好品' },
           { type: 'text', key: 'water', label: '水分摂取量（L/日）' },
           { type: 'textarea', key: 'allergy', label: 'アレルギー・苦手な食品', rows: 2 },
-          { type: 'text', key: 'supplement', label: 'サプリメント' },
-        ],
-      },
-      {
-        name: '運動・スポーツ歴',
-        kind: 'form',
-        fields: [
-          { type: 'textarea', key: 'sportHistory', label: 'これまでの運動・競技歴', rows: 3 },
-          { type: 'text', key: 'currentExercise', label: '現在の運動習慣' },
-          { type: 'textarea', key: 'trainingExp', label: 'ウエイトトレーニング経験・種目', rows: 2 },
         ],
       },
       {
@@ -174,7 +141,6 @@ export const TEMPLATES = [
     short: '注意書き',
     icon: '⚠️',
     role: 'precautions',
-    skipHeaderPage: true, // 顧客データはクライアント詳細の上部カードに既出のため省略
     description: '運動参加の注意事項・免責（緊急連絡先は顧客の基本情報を参照）',
     pages: [
       {
@@ -267,11 +233,11 @@ export function getTemplate(id) {
   return TEMPLATES.find((t) => t.id === id) || null;
 }
 
-// テンプレートから実カルテの pages 配列を生成（先頭に顧客データページを付与。
-// skipHeaderPage を持つテンプレートは、既に別画面に顧客データがあるため省略）
+// テンプレートから実カルテの pages 配列を生成する。
+// 顧客データはクライアント詳細画面・エディタ上部のサマリーに既出のため、
+// ページ（タブ）としては持たせない。
 export function instantiatePages(template) {
-  const src = template.skipHeaderPage ? [...template.pages] : [CLIENT_HEADER_PAGE, ...template.pages];
-  return src.map((p, idx) => ({
+  return template.pages.map((p, idx) => ({
     id: 'p' + idx + '-' + Math.random().toString(36).slice(2, 7),
     name: p.name,
     kind: p.kind || 'form',

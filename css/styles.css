@@ -157,10 +157,6 @@ body {
 .field-yesno .yn { display: flex; gap: 18px; }
 .field-yesno { color: var(--muted); }
 
-.client-summary { grid-column: 1/-1; width: 100%; border-collapse: collapse; font-size: 13px; }
-.client-summary th, .client-summary td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; vertical-align: top; }
-.client-summary th { background: var(--surface-2); color: var(--muted); width: 130px; font-weight: 600; }
-
 /* ---- table field ---- */
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: 9px; }
 .grid-table { border-collapse: collapse; width: 100%; min-width: 480px; }

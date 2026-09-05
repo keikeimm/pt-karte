@@ -91,7 +91,6 @@ function chartSheet(charts, emptyMessage) {
   for (const ch of charts) {
     rows.push([ch.role ? ch.title : `記入日: ${ch.date || ''}`]);
     for (const page of ch.pages) {
-      if (page.name === '顧客データ') continue; // 基本情報シートと重複するため省略
       rows.push([page.name]);
       rows.push(...pageValueRows(page));
     }

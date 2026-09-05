@@ -18,7 +18,7 @@ import {
   isKarteDateTaken,
 } from './store.js';
 import { el, toast, modal, confirmDialog, fmtDate, calcAge } from './ui.js';
-import { renderFormPage, renderNotePage, renderCanvasPage, clientSummaryBlock, kindIcon } from './fields.js';
+import { renderFormPage, renderNotePage, renderCanvasPage, kindIcon } from './fields.js';
 import { exportClientXlsx, exportAll, importFile } from './export.js';
 
 const app = () => document.getElementById('app');
@@ -582,7 +582,7 @@ async function viewChartEditor(clientId, chartId) {
     const container = el('div', { class: 'page-content ' + p.kind });
     if (p.kind === 'canvas') renderCanvasPage(p, container, markDirty, registerPad);
     else if (p.kind === 'note') renderNotePage(p, container, markDirty);
-    else renderFormPage(p, container, markDirty, c, registerPad);
+    else renderFormPage(p, container, markDirty, registerPad);
     bodyWrap.append(container);
   }
 }

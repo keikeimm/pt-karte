@@ -40,7 +40,7 @@ beforeEach(async () => {
 });
 
 describe('カルテエディタ: 共通', () => {
-  test('ページナビは pages 数だけ表示され、先頭がactive・顧客データが頭に出る', async () => {
+  test('ページナビは pages 数だけ表示され、先頭がactive・顧客サマリーが頭に出る（顧客データタブは無い）', async () => {
     const ch = await createChart(client.id, 'karte');
     await nav(`#/client/${client.id}/chart/${ch.id}`);
 
@@ -48,7 +48,7 @@ describe('カルテエディタ: 共通', () => {
     assert.equal(chips.length, ch.pages.length);
     assert.ok(chips[0].classList.contains('active'));
     assert.match(appEl().querySelector('.client-strip').textContent, /編集太郎/);
-    assert.match(appEl().querySelector('.client-summary').textContent, /編集太郎/);
+    assert.ok(![...chips].some((c) => c.textContent.includes('顧客データ')));
   });
 
   test('ページ送り・戻りとページ数表示', async () => {
@@ -69,16 +69,16 @@ describe('カルテエディタ: 共通', () => {
     const ch = await createChart(client.id, 'karte');
     await nav(`#/client/${client.id}/chart/${ch.id}`);
 
-    // 「顧客データ」「本日の記録」は skippable:false なのでスキップ不可な別ページを使う
-    gotoPageByName('メニュー・測定記録'); // index 2
+    // 「本日の記録」は skippable:false なのでスキップ不可な別ページを使う
+    gotoPageByName('メニュー・測定記録'); // index 1
     await flush();
     appEl().querySelector('.skip-toggle input').click();
     await flush();
-    assert.ok(appEl().querySelectorAll('.pchip')[2].classList.contains('skipped'));
+    assert.ok(appEl().querySelectorAll('.pchip')[1].classList.contains('skipped'));
 
-    gotoPageByName('本日の記録'); // index 1
+    gotoPageByName('本日の記録'); // index 0
     await flush();
-    clickByText(appEl(), 'button', '次のページ →'); // 2番目(index2)はスキップされ3番目(index3)へ
+    clickByText(appEl(), 'button', '次のページ →'); // 2番目(index1)はスキップされ3番目(index2)へ
     await flush();
     assert.equal(pageTitle(), '白紙（手書き・自由記述）');
   });
@@ -323,12 +323,12 @@ describe('カルテエディタ: 保存ボタン（カウンセリング/同意�
     await nav(`#/client/${client.id}/chart/${ch.id}`);
     assert.ok(byText(appEl(), '.crumbs button', '保存'), '保存ボタンが見当たらない');
 
-    fireInput(appEl().querySelector('textarea'), '担当者メモを記入'); // 顧客データページのheaderMemo
+    fireInput(appEl().querySelector('textarea'), 'ベンチプレス120kg'); // 「目標・運動歴」ページのmainGoal
     assert.match(appEl().querySelector('#savedTag').textContent, /未保存/);
 
     await saveNow();
     assert.match(appEl().querySelector('#savedTag').textContent, /保存済み/);
-    assert.equal((await getChart(ch.id)).pages[0].values.headerMemo, '担当者メモを記入');
+    assert.equal((await getChart(ch.id)).pages[0].values.mainGoal, 'ベンチプレス120kg');
   });
 
   test('precautions: 保存ボタンが表示され、押すと保存済みになる', async () => {

@@ -70,7 +70,7 @@ pt-karte/
 | --- | --- | --- |
 | `app.js` | ハッシュルーティング（未保存の変更を破棄してよいか確認するガード付き）、画面ごとのビュー関数、クライアントフォーム | （エントリポイント。exportは持たない） |
 | `ui.js` | ドメイン非依存の汎用UIキット: DOM生成（`el()`）、モーダル/トースト/確認ダイアログ、日付整形 | `el`, `toast`, `modal`, `confirmDialog`, `fmtDate`, `calcAge` |
-| `fields.js` | テンプレートのページ/フィールドをDOMへ描画（フォーム・表・手書き・自由記述） | `renderFormPage`, `renderNotePage`, `renderCanvasPage`, `clientSummaryBlock`, `kindIcon` |
+| `fields.js` | テンプレートのページ/フィールドをDOMへ描画（フォーム・表・手書き・自由記述） | `renderFormPage`, `renderNotePage`, `renderCanvasPage`, `kindIcon` |
 | `store.js` | クライアント/チャートのCRUD、会員ID採番、記入日管理・重複チェック | `newClient`, `nextMemberId`, `listClients`, `saveClient`, `deleteClient`, `createChart`, `saveChart`, `deleteChart`, `listCharts`, `listKartes`, `findChartByRole`, `todayISO`, `isKarteDateTaken` |
 | `templates.js` | テンプレート定義（データのみ、副作用なし） | `TEMPLATES`, `getTemplate`, `instantiatePages`, `BODY_CHARTS` |
 | `handwriting.js` | Canvas上でのペン入力管理（ストロークのベクタ保存、undo/redo） | `HandwritingPad` クラス |
