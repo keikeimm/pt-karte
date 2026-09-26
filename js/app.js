@@ -505,19 +505,22 @@ async function viewChartEditor(clientId, chartId) {
   // 顧客サマリー（頭に顧客データ）
   view.append(clientStrip(c));
 
-  // ページナビ（タブ）
+  // ページナビ（タブ）。1ページしか無いカルテ（白紙のみ）ではタブ切替自体が
+  // 不要なので、その場合はナビ/前後ボタンを表示しない
+  const multiPage = chart.pages.length > 1;
   const nav = el('div', { class: 'page-nav', id: 'pageNav' });
-  view.append(nav);
+  if (multiPage) view.append(nav);
 
   const bodyWrap = el('div', { class: 'page-body', id: 'pageBody' });
   view.append(bodyWrap);
 
-  // 前後ボタン
-  view.append(el('div', { class: 'page-move' },
-    el('button', { class: 'btn btn-ghost', onclick: () => go(-1) }, '← 前のページ'),
-    el('span', { class: 'muted', id: 'pageCount' }),
-    el('button', { class: 'btn btn-ghost', onclick: () => go(1) }, '次のページ →')
-  ));
+  if (multiPage) {
+    view.append(el('div', { class: 'page-move' },
+      el('button', { class: 'btn btn-ghost', onclick: () => go(-1) }, '← 前のページ'),
+      el('span', { class: 'muted', id: 'pageCount' }),
+      el('button', { class: 'btn btn-ghost', onclick: () => go(1) }, '次のページ →')
+    ));
+  }
 
   app().replaceChildren(view);
   drawNav();
@@ -565,10 +568,10 @@ async function viewChartEditor(clientId, chartId) {
     const p = chart.pages[pageIdx];
     bodyWrap.replaceChildren();
 
-    // ページヘッダ（種別・スキップ）
+    // ページヘッダ（種別・スキップ）。1ページしか無ければ「飛ばす」設定は無意味なので出さない
     const head = el('div', { class: 'page-head' },
       el('div', { class: 'page-h-title' }, p.name),
-      el('label', { class: 'skip-toggle' + (p.skippable ? '' : ' disabled') },
+      multiPage && el('label', { class: 'skip-toggle' + (p.skippable ? '' : ' disabled') },
         el('input', {
           type: 'checkbox', ...(p.skipped ? { checked: true } : {}),
           ...(p.skippable ? {} : { disabled: true }),

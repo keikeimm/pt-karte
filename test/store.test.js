@@ -145,13 +145,13 @@ describe('store.js（charts: karte、記入日で管理）', () => {
 
   test('saveChart で値・ページのスキップ状態が永続化される', async () => {
     const ch = await createChart(client.id, 'karte');
-    ch.pages[1].values.condition = '良い';
-    ch.pages[2].skipped = true;
+    ch.pages[0].values.note = '本日のメモ';
+    ch.pages[0].skipped = true;
     await saveChart(ch);
 
     const reloaded = await getChart(ch.id);
-    assert.equal(reloaded.pages[1].values.condition, '良い');
-    assert.equal(reloaded.pages[2].skipped, true);
+    assert.equal(reloaded.pages[0].values.note, '本日のメモ');
+    assert.equal(reloaded.pages[0].skipped, true);
   });
 
   test('listCharts は指定クライアントのカルテのみ返す', async () => {

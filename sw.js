@@ -1,6 +1,6 @@
 // PT カルテ Service Worker — app shell を precache してオフライン動作させる。
 // 資材を更新したら CACHE_VERSION を上げること。
-const CACHE_VERSION = 'pt-karte-v4';
+const CACHE_VERSION = 'pt-karte-v5';
 
 const ASSETS = [
   './',

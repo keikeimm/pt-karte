@@ -28,13 +28,12 @@ describe('templates.js', () => {
     }
   });
 
-  test('karte のタブ構成: 本日の記録 / メニュー・測定記録 / 白紙（手書き・自由記述）', () => {
+  test('karte は白紙（手書き・自由記述）1ページのみ', () => {
     const pages = instantiatePages(getTemplate('karte'));
-    const names = pages.map((p) => p.name);
-    assert.deepEqual(names, ['本日の記録', 'メニュー・測定記録', '白紙（手書き・自由記述）']);
-    assert.equal(pages[0].skippable, false);
-    assert.equal(pages.find((p) => p.name === '白紙（手書き・自由記述）').kind, 'canvas');
-    assert.equal(pages.find((p) => p.name === 'メニュー・測定記録').fields[0].type, 'table');
+    assert.equal(pages.length, 1);
+    assert.equal(pages[0].name, '白紙（手書き・自由記述）');
+    assert.equal(pages[0].kind, 'canvas');
+    assert.equal(pages[0].fields[0].type, 'textarea');
   });
 
   test('precautions のタブ構成: 注意事項 / 免責・キャンセルポリシー（緊急連絡先は顧客の基本情報に移設済み）', () => {
@@ -53,8 +52,8 @@ describe('templates.js', () => {
     const a = instantiatePages(tpl);
     const b = instantiatePages(tpl);
     assert.notEqual(a[0].id, b[0].id);
-    a[0].values.condition = '良い';
-    assert.equal(b[0].values.condition, undefined);
+    a[0].values.note = '書き込み済み';
+    assert.equal(b[0].values.note, undefined);
     assert.deepEqual(a[0].strokes, []);
   });
 

@@ -186,38 +186,8 @@ export const TEMPLATES = [
     name: 'カルテ',
     short: 'カルテ',
     icon: '📝',
-    description: '記入日で管理。各項目（コンディション・メニュー/測定）＋白紙の手書き欄をタブで切替',
+    description: '記入日で管理。項目を決めず白紙に手書き・自由記述する',
     pages: [
-      {
-        name: '本日の記録',
-        kind: 'form',
-        skippable: false,
-        fields: [
-          { type: 'select', key: 'condition', label: '体調', options: ['良い', '普通', '不調'] },
-          { type: 'number', key: 'sleepHours', label: '睡眠時間（h）' },
-          { type: 'number', key: 'weight', label: '体重（kg）' },
-          { type: 'number', key: 'bodyFat', label: '体脂肪率（%）' },
-          { type: 'textarea', key: 'memo', label: 'メモ', rows: 3 },
-        ],
-      },
-      {
-        name: 'メニュー・測定記録',
-        kind: 'form',
-        fields: [
-          {
-            type: 'table',
-            key: 'items',
-            label: '種目・測定項目',
-            columns: [
-              { key: 'name', label: '種目・項目', type: 'text' },
-              { key: 'value', label: '重量・数値', type: 'text' },
-              { key: 'reps', label: '回数・セット', type: 'text' },
-              { key: 'note', label: 'メモ', type: 'text' },
-            ],
-            rows: Array.from({ length: 6 }, () => ({})),
-          },
-        ],
-      },
       {
         name: '白紙（手書き・自由記述）',
         kind: 'canvas',

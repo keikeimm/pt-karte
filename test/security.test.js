@@ -120,25 +120,37 @@ describe('セキュリティ（動的検証）: 悪意ある入力を入れて�
     assert.notEqual(window.__xss_fired, true);
   });
 
-  test('カルテのメモ・テーブル欄にペイロードを入れてもタグとして解釈されない', async () => {
+  test('カルテの自由記述欄にペイロードを入れてもタグとして解釈されない', async () => {
     const c = newClient({ name: 'テスト太郎', kana: 'テスト', birthday: '1990-01-01', sex: '男', startDate: '2026-01-01' });
     await saveClient(c);
     const ch = await createChart(c.id, 'karte');
-    ch.pages.find((p) => p.name === '本日の記録').values.memo = XSS_SCRIPT;
-    ch.pages.find((p) => p.name === 'メニュー・測定記録').values.items = [{ name: XSS, value: XSS_SCRIPT, reps: '', note: '' }];
+    ch.pages[0].values.note = XSS_SCRIPT; // 白紙（手書き・自由記述）ページの唯一のフィールド
     await saveChart(ch);
 
     await nav(`#/client/${c.id}/chart/${ch.id}`);
-    clickByText(appEl(), '.pchip-name', '本日の記録');
-    await flush();
     assert.equal(appEl().querySelector('script'), null);
     assert.equal(appEl().querySelector('img'), null);
     assert.notEqual(window.__xss_fired, true);
-    // メモ欄(textarea)には文字列としてそのまま入っている（valueはHTML解釈されない）
-    const memoTextarea = [...appEl().querySelectorAll('textarea')].find((t) => t.value === XSS_SCRIPT);
-    assert.ok(memoTextarea);
+    // 自由記述欄(textarea)には文字列としてそのまま入っている（valueはHTML解釈されない）
+    const noteTextarea = [...appEl().querySelectorAll('textarea')].find((t) => t.value === XSS_SCRIPT);
+    assert.ok(noteTextarea);
+  });
 
-    clickByText(appEl(), '.pchip-name', 'メニュー・測定記録');
+  test('table フィールドにペイロードを入れてもタグとして解釈されない（将来のテンプレ拡張向けの確認）', async () => {
+    // 現行3テンプレに table フィールドは無いが、レンダラは汎用なので直接ページを足して検証する
+    const c = newClient({ name: 'テスト太郎', kana: 'テスト', birthday: '1990-01-01', sex: '男', startDate: '2026-01-01' });
+    await saveClient(c);
+    const ch = await createChart(c.id, 'karte');
+    ch.pages.push({
+      id: 'table1', name: '測定記録', kind: 'form', skippable: true, skipped: false, bg: null,
+      placeholder: '', text: '', strokes: [],
+      fields: [{ type: 'table', key: 'items', label: '種目', columns: [{ key: 'name', label: '種目', type: 'text' }] }],
+      values: { items: [{ name: XSS }] },
+    });
+    await saveChart(ch);
+
+    await nav(`#/client/${c.id}/chart/${ch.id}`);
+    clickByText(appEl(), '.pchip-name', '測定記録');
     await flush();
     assert.equal(appEl().querySelector('script'), null);
     assert.equal(appEl().querySelector('img'), null);
@@ -152,14 +164,11 @@ describe('セキュリティ（動的検証）: 悪意ある入力を入れて�
     const c = newClient({ name: 'テスト太郎', kana: 'テスト', birthday: '1990-01-01', sex: '男', startDate: '2026-01-01' });
     await saveClient(c);
     const ch = await createChart(c.id, 'karte');
-    const canvasPage = ch.pages.find((p) => p.name === '白紙（手書き・自由記述）');
-    canvasPage.bg = XSS_SCRIPT; // BODY_CHARTS に無いキー
+    ch.pages[0].bg = XSS_SCRIPT; // BODY_CHARTS に無いキー（karteは白紙1ページのみ）
     await saveChart(ch);
 
     await nav(`#/client/${c.id}/chart/${ch.id}`);
-    // ページナビの最後（白紙タブ）を開く
-    const chips = appEl().querySelectorAll('.pchip-name');
-    [...chips].find((n) => n.textContent === '白紙（手書き・自由記述）').click();
+    // karte は白紙1ページのみなのでタブ切替は不要、そのまま表示されている
     await flush();
 
     assert.equal(appEl().querySelector('script'), null);
